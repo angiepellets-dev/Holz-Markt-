@@ -3,23 +3,58 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Holz Markt – Holz Markt</title>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-  <style>
-    html,body{height:100%;margin:0}
-    #map{width:100%;height:100%}
+  <title>Holz Markt – Grundkarte</title>
 
-    /* Grundboxen */
-    .legend, .cert-box {
-      position:absolute;background:#fff;padding:8px 10px;
-      border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.12);
-      font:14px/1.3 system-ui,Arial,sans-serif;
+  <!-- Leaflet CSS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  />
+
+  <!-- Optional: Papaparse, falls du später CSV laden willst -->
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
     }
-(async ()=>{
-  await ladeDaten();
-  await buildMap();
-})();
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+<body>
+
+<!-- Karte -->
+<div id="map"></div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  // Grundkarte erstellen
+  const map = L.map('map').setView([51, 11], 6); // Mitte Deutschland, Zoom 6
+
+  // Hintergrundkarte (Tiles)
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap-Mitwirkende',
+    minZoom: 2,
+    maxZoom: 18
+  }).addTo(map);
+
+  // Beispiel-Marker (kannst du später löschen)
+  const beispielMarker = L.marker([52.52, 13.405]).addTo(map); // Berlin
+  beispielMarker.bindPopup('<b>Beispiel-Marker</b><br>Hier kannst du später Werke/Kunden anzeigen.');
+
+  /* 
+   * HIER SPÄTER:
+   * - CSV laden (Papa.parse)
+   * - Marker für Werke/Kunden erzeugen
+   * - Filter, Legende, usw. einbauen
+   */
 </script>
+
 </body>
 </html>
