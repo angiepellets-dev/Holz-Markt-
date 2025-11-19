@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Grundkarte – Leaflet</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+    }
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+  </style>
+</head>
+
+<body>
+
+<div id="map"></div>
+
+<!-- Leaflet JS -->
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+  // Karte erstellen
+  const map = L.map("map").setView([51, 11], 6); // Mittelpunkt DE + Zoom
+
+  // Kartenlayer hinzufügen
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "&copy; OpenStreetMap",
+    minZoom: 4,
+    maxZoom: 18
+  }).addTo(map);
+
+  // Beispiel: Marker einfügen
+  L.marker([52.52, 13.405]).addTo(map)
+    .bindPopup("Berlin – Beispielmarker");
+
+  // Beispiel: Text an anderer Stelle einfügen
+  // Du kannst hier jederzeit mehr Funktionen einbauen
+
+</script>
+
+</body>
+</html>
