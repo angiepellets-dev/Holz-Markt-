@@ -81,10 +81,10 @@
       border: 1px solid #ccc;
       border-radius: 4px;
       box-shadow: 0 2px 8px rgba(0,0,0,.12);
-      z-index: 4000;          /* ganz vorne */
+      z-index: 4000;
       display: none;
       min-width: 160px;
-      max-height: 260px;      /* höher, scrollbar */
+      max-height: 260px;
       overflow-y: auto;
       padding: 6px 8px;
       box-sizing:border-box;
@@ -120,18 +120,23 @@
   </div>
 </div>
 
-<!-- Zertifikate + Sackware -->
+<!-- Zertifikate + Sackware + Datenquellen -->
 <div class="cert-box">
   <b>Zertifikate & Sackware</b><br>
   <label><input type="checkbox" id="chkEnPlus" checked> EnPlus</label><br>
   <label><input type="checkbox" id="chkDINplus" checked> DINplus</label><br>
   <label><input type="checkbox" id="chkSURE" checked> SURE</label><br>
-  <label><input type="checkbox" id="chkCPP" checked> CPP</label><br><!-- NEU -->
+  <label><input type="checkbox" id="chkCPP" checked> CPP</label><br>
   <label><input type="checkbox" id="chkOhneZert" checked> Kein Zertifikat</label>
   <hr>
   <b>Sackware</b><br>
   <label><input type="checkbox" id="chkSackFireflies"> FireFlies</label><br>
   <label><input type="checkbox" id="chkSack15kg"> 15 kg</label>
+  <hr>
+  <!-- Datenquelle -->
+  <b>Datenquelle</b><br>
+  <label><input type="checkbox" id="chkPellets" checked> Pellets</label><br>
+  <label><input type="checkbox" id="chkSaegerestholzNord" checked> Sägerestholz Nord</label>
 </div>
 
 <!-- Legende nur für Farben + Kunden, unten rechts -->
@@ -202,9 +207,15 @@ const lilaDreieck = L.divIcon({
   popupAnchor: [0,-20]
 });
 
-/* HIER die URL deiner Firmen-/Sägerestholz-Tabelle eintragen */
-const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
-/* Kunden-Tabelle bleibt wie gehabt */
+/* Beide Blätter sind in derselben Datei (dein Link) */
+
+/* Pellets = Standardblatt (z.B. erstes Blatt) */
+const sheetUrlPellets = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
+
+/* SÄGERESTHOLZ NORD = Blatt mit gid=1423782020 */
+const sheetUrlSaegerestholz = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv&gid=1423782020";
+
+/* Kunden-Tabelle (falls separat) */
 const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
 
 let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
@@ -226,17 +237,6 @@ function parseFirmenWithHeader(rows){
   const zertKey = findKey(["zertifikate","zertifikat","zert","cert"]);
   const sackKey = findKey(["sackware","sack","bag","bagged"]);
 
-  /* NEU: Produkt / Lieferanten-Spalte erkennen */
-  const produktKey = findKey([
-    "produkt",
-    "ware",
-    "material",
-    "rohstoff",
-    "produktart",
-    "lieferant",
-    "lieferanten"
-  ]);
-
   return rows
     .filter(x => (x?.[nameKey]||"").toString().trim() && (x?.[ortKey]||"").toString().trim())
     .map(x => ({
@@ -245,15 +245,14 @@ function parseFirmenWithHeader(rows){
       preis: parseFloat(String(x?.[preisKey] ?? "0").replace(",", ".")),
       preisSack: parseFloat(String(x?.[sackPreisKey] ?? "0").replace(",", ".")),
       zert: (x?.[zertKey]||"").toString().trim(),
-      sack: (x?.[sackKey]||"").toString().trim(),
-      /* NEU: Inhalt der Spalte "Lieferanten"/"Produkt" */
-      produkt: produktKey ? (x?.[produktKey] || "").toString().trim() : ""
+      sack: (x?.[sackKey]||"").toString().trim()
     }));
 }
 
 async function ladeDaten() {
-  const firmenPromise = new Promise((resolve) => {
-    Papa.parse(sheetUrlFirmen, {
+  // Pellets-Daten
+  const pelletsPromise = new Promise((resolve) => {
+    Papa.parse(sheetUrlPellets, {
       download: true, header: true,
       complete: (r) => {
         try{
@@ -262,7 +261,7 @@ async function ladeDaten() {
             daten = parseFirmenWithHeader(r.data);
           }
           if (!daten.length) {
-            Papa.parse(sheetUrlFirmen, {
+            Papa.parse(sheetUrlPellets, {
               download: true, header: false,
               complete: (r2) => {
                 const rows = r2.data.filter(row => row.length >= 8 && row[0] && row[1]);
@@ -272,9 +271,7 @@ async function ladeDaten() {
                   preis: parseFloat(String(row[2]||"0").replace(",", ".")),
                   preisSack: parseFloat(String(row[4]||"0").replace(",", ".")),
                   zert:  (row[6]||"").trim(),
-                  sack:  (row[7]||"").trim(),
-                  // optional: Produkt in Spalte 9 (Index 8), falls vorhanden
-                  produkt: (row[8] || "").trim()
+                  sack:  (row[7]||"").trim()
                 }));
                 resolve(normalizePreise(daten2));
               }
@@ -283,13 +280,51 @@ async function ladeDaten() {
           }
           resolve(normalizePreise(daten));
         }catch(e){
-          console.error("Header-Parsing Fehler:", e);
+          console.error("Header-Parsing Fehler (Pellets):", e);
           resolve([]);
         }
       }
     });
   });
 
+  // SÄGERESTHOLZ NORD
+  const saegPromise = new Promise((resolve) => {
+    Papa.parse(sheetUrlSaegerestholz, {
+      download: true, header: true,
+      complete: (r) => {
+        try{
+          let daten = [];
+          if (r.data && r.data.length && Object.keys(r.data[0]||{}).length > 1) {
+            daten = parseFirmenWithHeader(r.data);
+          }
+          if (!daten.length) {
+            Papa.parse(sheetUrlSaegerestholz, {
+              download: true, header: false,
+              complete: (r2) => {
+                const rows = r2.data.filter(row => row.length >= 8 && row[0] && row[1]);
+                const daten2 = rows.map(row => ({
+                  firma: (row[0]||"").trim(),
+                  ort:   (row[1]||"").trim(),
+                  preis: parseFloat(String(row[2]||"0").replace(",", ".")),
+                  preisSack: parseFloat(String(row[4]||"0").replace(",", ".")),
+                  zert:  (row[6]||"").trim(),
+                  sack:  (row[7]||"").trim()
+                }));
+                resolve(normalizePreise(daten2));
+              }
+            });
+            return;
+          }
+          resolve(normalizePreise(daten));
+        }catch(e){
+          console.error("Header-Parsing Fehler (Sägerestholz Nord):", e);
+          resolve([]);
+        }
+      }
+    });
+  });
+
+  // Kunden
   const kundenPromise = new Promise((resolve)=>{
     Papa.parse(sheetUrlKunden, {
       download:true, header:true,
@@ -314,8 +349,13 @@ async function ladeDaten() {
     });
   });
 
-  const [firmen, kundenDaten] = await Promise.all([firmenPromise, kundenPromise]);
-  werke = firmen; kunden = kundenDaten;
+  const [pellets, saegerestholz, kundenDaten] = await Promise.all([pelletsPromise, saegPromise, kundenPromise]);
+
+  werke = [
+    ...pellets.map(w => ({...w, dataset: "pellets"})),
+    ...saegerestholz.map(w => ({...w, dataset: "saegerestholz"}))
+  ];
+  kunden = kundenDaten;
 }
 
 function normalizePreise(daten){
@@ -366,17 +406,17 @@ function tooltipHtmlFromMarker(m){
   const zertInfo = m.zert ? `<br><b>Zertifikat:</b> ${m.zert}` : "";
   const sackInfo = m.sack ? `<br><b>Sackware:</b> ${m.sack}` : "";
 
-  // Landesdurchschnitt
   let avgTxt = "";
   const avg = avgPriceByCountry[m.country_code];
   if (avg && isFinite(avg)) {
     avgTxt = `<br><b>Landesdurchschnitt:</b> ${avg.toFixed(2)} €`;
   }
 
-  // NEU: Lieferanten / Produktinfo
-  const prodInfo = m.produkt ? `<br><b>Lieferanten / Produkt:</b> ${m.produkt}` : "";
+  let dsTxt = "";
+  if (m.dataset === "pellets") dsTxt = "<br><b>Datenquelle:</b> Pellets";
+  if (m.dataset === "saegerestholz") dsTxt = "<br><b>Datenquelle:</b> Sägerestholz Nord";
 
-  return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${prodInfo}${avgTxt}`;
+  return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${dsTxt}${avgTxt}`;
 }
 
 async function buildMap(){
@@ -398,7 +438,7 @@ async function buildMap(){
           preis:w.preis, preisSack:w.preisSack,
           zert:(w.zert||""),
           sack:(w.sack||""),
-          produkt:(w.produkt || ""),
+          dataset:w.dataset,
           country_code: (c.country_code || "")
         }));
       })
@@ -418,8 +458,7 @@ async function buildMap(){
       zert:(w.zert||"").toLowerCase(),
       sack:(w.sack||""),
       country_code: (c.country_code || ""),
-      // NEU: Produkt/ Lieferanten-Info im Marker speichern
-      produkt: (w.produkt || "")
+      dataset: w.dataset
     });
     bounds.extend([c.lat,c.lon]);
   }
@@ -445,21 +484,18 @@ async function buildMap(){
     bounds.extend([c.lat,c.lon]);
   }
 
-  // Durchschnitt je Land berechnen
   berechneDurchschnittProLand();
 
   if(bounds.isValid())map.fitBounds(bounds.pad(0.15));
   updateLayers();
 }
 
-// liest alle angehakten Länder aus dem Dropdown
 function getSelectedCountries() {
   const chks = document.querySelectorAll(".countryChk");
   const selected = [];
   chks.forEach(ch => {
     if (ch.checked) selected.push(ch.value);
   });
-  // wenn "all" angehakt ist oder nichts -> ["all"]
   if (selected.length === 0 || selected.includes("all")) return ["all"];
   return selected;
 }
@@ -470,7 +506,6 @@ function updateCountryButtonLabel() {
   if (selected.length === 1 && selected[0] === "all") {
     btn.textContent = "Alle Länder";
   } else {
-    // kleine Labels
     const names = {
       de: "DE",
       at: "AT",
@@ -494,7 +529,7 @@ function updateLayers(){
   const en         = document.getElementById("chkEnPlus").checked;
   const din        = document.getElementById("chkDINplus").checked;
   const sure       = document.getElementById("chkSURE").checked;
-  const cpp        = document.getElementById("chkCPP").checked;   // NEU
+  const cpp        = document.getElementById("chkCPP").checked;
   const ohne       = document.getElementById("chkOhneZert").checked;
 
   const gruen      = document.getElementById("chkGruen").checked;
@@ -508,8 +543,10 @@ function updateLayers(){
   const want15kg      = document.getElementById("chkSack15kg").checked;
   const useSack       = (wantFireflies || want15kg);
 
+  const showPellets = document.getElementById("chkPellets").checked;
+  const showSaeg    = document.getElementById("chkSaegerestholzNord").checked;
+
   for(const m of alleMarker){
-    // Kunden
     if(m.type === "kunde"){
       if (kundenFlag) {
         if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
@@ -528,6 +565,9 @@ function updateLayers(){
     }
 
     // Firmen
+    if (m.dataset === "pellets" && !showPellets) continue;
+    if (m.dataset === "saegerestholz" && !showSaeg) continue;
+
     if (useSack) {
       const sNorm = (m.sack||"").toLowerCase().replace(/\s+/g,' ').trim();
       const hasFireflies = sNorm.includes("fireflies");
@@ -542,7 +582,7 @@ function updateLayers(){
     if(z.includes("enplus") && en) zertOK = true;
     if(z.includes("dinplus") && din) zertOK = true;
     if(z.includes("sure") && sure) zertOK = true;
-    if(z.includes("cpp") && cpp) zertOK = true;   // NEU
+    if(z.includes("cpp") && cpp) zertOK = true;
     if(!z && ohne) zertOK = true;
     if(!zertOK) continue;
 
@@ -560,14 +600,12 @@ function updateLayers(){
     if(isGrau && grau) sichtbar = true;
     if(!sichtbar) continue;
 
-    // Länderfilter
     if (!noCountryFilter) {
       if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
     }
 
     m.marker.setStyle({color:aktiveFarbe, fillColor:aktiveFarbe});
     if (m.marker.getTooltip()) {
-      // Tooltip mit aktueller Info neu setzen
       m.marker.getTooltip().setContent( tooltipHtmlFromMarker(m) );
     }
     map.addLayer(m.marker);
@@ -622,11 +660,9 @@ async function showRoute(a,b){
   } else alert("Keine Route gefunden!");
 }
 
-// Klick auf „leere“ Karte entfernt Strecke & Popup, aber Marker/Routeklick bleibt normal
 map.on('click', (e) => {
   const t = e.originalEvent && e.originalEvent.target;
   if (t && t.closest) {
-    // Wenn auf Marker, Popup oder Linie geklickt -> nichts machen
     if (t.closest('.leaflet-marker-icon') ||
         t.closest('.leaflet-popup') ||
         t.closest('.leaflet-interactive')) {
@@ -641,18 +677,14 @@ map.on('click', (e) => {
   map.closePopup();
 });
 
-// globale Change-Listener
 document.addEventListener("change", e => {
   if (e.target && e.target.matches('input[type="checkbox"]')) {
-    // wenn es eine der Länder-Checkboxen ist:
     if (e.target.classList.contains("countryChk")) {
-      // wenn "Alle" angeklickt wird -> alle anderen aus
       if (e.target.value === "all" && e.target.checked) {
         document.querySelectorAll(".countryChk").forEach(ch => {
           if (ch.value !== "all") ch.checked = false;
         });
       } else if (e.target.value !== "all" && e.target.checked) {
-        // wenn ein Land angehakt wird -> "Alle" aus
         const allChk = document.querySelector('.countryChk[value="all"]');
         allChk.checked = false;
       }
@@ -662,13 +694,11 @@ document.addEventListener("change", e => {
   }
 });
 
-// dropdown auf/zu
 document.getElementById("countryDropdownBtn").addEventListener("click", () => {
   const menu = document.getElementById("countryDropdownMenu");
   menu.style.display = (menu.style.display === "block") ? "none" : "block";
 });
 
-// außerhalb klicken -> zu
 document.addEventListener("click", (e) => {
   const dd = document.getElementById("countryDropdown");
   if (!dd.contains(e.target)) {
