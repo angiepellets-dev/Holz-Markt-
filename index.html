@@ -202,12 +202,14 @@ const lilaDreieck = L.divIcon({
   popupAnchor: [0,-20]
 });
 
+/* HIER die URL deiner Firmen-/Sägerestholz-Tabelle eintragen */
 const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
+/* Kunden-Tabelle bleibt wie gehabt */
 const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
 
 let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
 
-// NEU: Durchschnittspreise pro Land (Werkspreis)
+// Durchschnittspreise pro Land (Werkspreis)
 let avgPriceByCountry = {};
 
 function parseFirmenWithHeader(rows){
@@ -224,6 +226,17 @@ function parseFirmenWithHeader(rows){
   const zertKey = findKey(["zertifikate","zertifikat","zert","cert"]);
   const sackKey = findKey(["sackware","sack","bag","bagged"]);
 
+  /* NEU: Produkt / Lieferanten-Spalte erkennen */
+  const produktKey = findKey([
+    "produkt",
+    "ware",
+    "material",
+    "rohstoff",
+    "produktart",
+    "lieferant",
+    "lieferanten"
+  ]);
+
   return rows
     .filter(x => (x?.[nameKey]||"").toString().trim() && (x?.[ortKey]||"").toString().trim())
     .map(x => ({
@@ -232,7 +245,9 @@ function parseFirmenWithHeader(rows){
       preis: parseFloat(String(x?.[preisKey] ?? "0").replace(",", ".")),
       preisSack: parseFloat(String(x?.[sackPreisKey] ?? "0").replace(",", ".")),
       zert: (x?.[zertKey]||"").toString().trim(),
-      sack: (x?.[sackKey]||"").toString().trim()
+      sack: (x?.[sackKey]||"").toString().trim(),
+      /* NEU: Inhalt der Spalte "Lieferanten"/"Produkt" */
+      produkt: produktKey ? (x?.[produktKey] || "").toString().trim() : ""
     }));
 }
 
@@ -257,7 +272,9 @@ async function ladeDaten() {
                   preis: parseFloat(String(row[2]||"0").replace(",", ".")),
                   preisSack: parseFloat(String(row[4]||"0").replace(",", ".")),
                   zert:  (row[6]||"").trim(),
-                  sack:  (row[7]||"").trim()
+                  sack:  (row[7]||"").trim(),
+                  // optional: Produkt in Spalte 9 (Index 8), falls vorhanden
+                  produkt: (row[8] || "").trim()
                 }));
                 resolve(normalizePreise(daten2));
               }
@@ -322,7 +339,7 @@ function sackFilterAktiv(){
   return (wantFireflies || want15kg);
 }
 
-// NEU: Durchschnittspreise pro Land berechnen (Werkspreis)
+// Durchschnittspreise pro Land berechnen (Werkspreis)
 function berechneDurchschnittProLand(){
   const sums = {};
   const counts = {};
@@ -349,14 +366,17 @@ function tooltipHtmlFromMarker(m){
   const zertInfo = m.zert ? `<br><b>Zertifikat:</b> ${m.zert}` : "";
   const sackInfo = m.sack ? `<br><b>Sackware:</b> ${m.sack}` : "";
 
-  // NEU: Landesdurchschnitt im Tooltip
+  // Landesdurchschnitt
   let avgTxt = "";
   const avg = avgPriceByCountry[m.country_code];
   if (avg && isFinite(avg)) {
     avgTxt = `<br><b>Landesdurchschnitt:</b> ${avg.toFixed(2)} €`;
   }
 
-  return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${avgTxt}`;
+  // NEU: Lieferanten / Produktinfo
+  const prodInfo = m.produkt ? `<br><b>Lieferanten / Produkt:</b> ${m.produkt}` : "";
+
+  return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${prodInfo}${avgTxt}`;
 }
 
 async function buildMap(){
@@ -378,6 +398,7 @@ async function buildMap(){
           preis:w.preis, preisSack:w.preisSack,
           zert:(w.zert||""),
           sack:(w.sack||""),
+          produkt:(w.produkt || ""),
           country_code: (c.country_code || "")
         }));
       })
@@ -396,7 +417,9 @@ async function buildMap(){
       farbeSack:w.farbeSack,
       zert:(w.zert||"").toLowerCase(),
       sack:(w.sack||""),
-      country_code: (c.country_code || "")
+      country_code: (c.country_code || ""),
+      // NEU: Produkt/ Lieferanten-Info im Marker speichern
+      produkt: (w.produkt || "")
     });
     bounds.extend([c.lat,c.lon]);
   }
@@ -422,7 +445,7 @@ async function buildMap(){
     bounds.extend([c.lat,c.lon]);
   }
 
-  // NEU: nachdem alle Firmen-Marker da sind, Durchschnitt je Land berechnen
+  // Durchschnitt je Land berechnen
   berechneDurchschnittProLand();
 
   if(bounds.isValid())map.fitBounds(bounds.pad(0.15));
@@ -544,7 +567,7 @@ function updateLayers(){
 
     m.marker.setStyle({color:aktiveFarbe, fillColor:aktiveFarbe});
     if (m.marker.getTooltip()) {
-      // Tooltip ggf. mit aktuellem Landesdurchschnitt neu setzen
+      // Tooltip mit aktueller Info neu setzen
       m.marker.getTooltip().setContent( tooltipHtmlFromMarker(m) );
     }
     map.addLayer(m.marker);
