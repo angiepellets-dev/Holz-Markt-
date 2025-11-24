@@ -201,6 +201,16 @@ const lilaDreieck = L.divIcon({
   popupAnchor: [0,-20]
 });
 
+// HELLGELBES Dreieck für "Abnehmer = Sägerestholz" aus Pellet-Tabelle
+const hellgelbesDreieck = L.divIcon({
+  className: "custom-triangle-yellow",
+  html: `<svg width="24" height="24" viewBox="0 0 24 24">
+           <polygon points="12,2 22,22 2,22" fill="#fff9c4" stroke="black" stroke-width="1"/>
+         </svg>`,
+  iconAnchor: [12,22],
+  popupAnchor: [0,-20]
+});
+
 /* Deine Links */
 const sheetUrlPellets = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
 const sheetUrlSaegerestholz = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv&gid=1423782020";
@@ -340,21 +350,24 @@ async function ladeDaten() {
 
   const [pellets, saegerestholz, kundenDaten] = await Promise.all([pelletsPromise, saegPromise, kundenPromise]);
 
-  // Firmen aus Pellet-Tabelle nach Abnehmer klassifizieren:
-  // - Abnehmer enthält "Sägerestholz" -> dataset: "saegerestholz" (Dreieck)
-  // - sonst -> dataset: "pellets" (Kreis)
+  // Pellet-Firmen nach Abnehmer klassifizieren:
+  // - Abnehmer enthält "Sägerestholz" -> dataset: "saegerestholz" (gehört zum Filter Sägerestholz Nord)
+  // - sonst -> dataset: "pellets"
   const pelletsMitDataset = pellets.map(w => {
     const abn = (w.abnehmer || "").toLowerCase();
     const istSaegerest = abn.includes("sägerestholz") || abn.includes("saegerestholz");
     return {
       ...w,
-      dataset: istSaegerest ? "saegerestholz" : "pellets"
+      dataset: istSaegerest ? "saegerestholz" : "pellets",
+      source: "pellets"
     };
   });
 
+  // Sägerestholz-Blatt: immer dataset saegerestholz, aber bleibt Kreis (source unterscheidet das)
   const saegMitDataset = saegerestholz.map(w => ({
     ...w,
-    dataset: "saegerestholz"
+    dataset: "saegerestholz",
+    source: "saegblatt"
   }));
 
   werke = [...pelletsMitDataset, ...saegMitDataset];
@@ -423,6 +436,24 @@ function tooltipHtmlFromMarker(m){
   return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${abnTxt}${dsTxt}${avgTxt}`;
 }
 
+// Helper zum Anhängen von Tooltip & Klick auf einen Marker
+function attachWerkInteractions(layer, w, c){
+  layer
+    .bindTooltip("", {sticky:true})
+    .on("tooltipopen", () => {
+      layer.getTooltip().setContent( tooltipHtmlFromMarker({
+        firma:w.firma, ort:w.ort,
+        preis:w.preis, preisSack:w.preisSack,
+        zert:(w.zert||""),
+        sack:(w.sack||""),
+        abnehmer:(w.abnehmer||""),
+        dataset:w.dataset,
+        country_code: (c.country_code || "")
+      }));
+    })
+    .on("click",()=>handleMarkerClick(w.firma,c));
+}
+
 async function buildMap(){
   alleMarker = [];
   const bounds=L.latLngBounds();
@@ -434,39 +465,33 @@ async function buildMap(){
 
     const farbeInit = sackFilterAktiv() ? w.farbeSack : w.farbeWerk;
 
-    // Kreis oder Dreieck je nach dataset
-    let marker;
-    if (w.dataset === "saegerestholz") {
-      // Sägerestholz Nord -> Dreieck
-      marker = L.marker([c.lat,c.lon], {icon: blauesDreieck});
-    } else {
-      // normale Pelletwerke -> Kreis
-      marker = L.circleMarker([c.lat,c.lon],{
-        radius:8,
-        color:farbeInit,
-        fillColor:farbeInit,
-        fillOpacity:0.85
-      });
-    }
+    // Standard: Kreis-Marker
+    const circleMarker = L.circleMarker([c.lat,c.lon],{
+      radius:8,
+      color:farbeInit,
+      fillColor:farbeInit,
+      fillOpacity:0.85
+    });
 
-    marker
-      .bindTooltip("", {sticky:true})
-      .on("tooltipopen", () => {
-        marker.getTooltip().setContent( tooltipHtmlFromMarker({
-          firma:w.firma, ort:w.ort,
-          preis:w.preis, preisSack:w.preisSack,
-          zert:(w.zert||""),
-          sack:(w.sack||""),
-          abnehmer:(w.abnehmer||""),
-          dataset:w.dataset,
-          country_code: (c.country_code || "")
-        }));
-      })
-      .on("click",()=>handleMarkerClick(w.firma,c));
+    attachWerkInteractions(circleMarker, w, c);
+
+    // Dreieck NUR für Pellet-Tabelle + Abnehmer=Sägerestholz
+    let triangleMarker = null;
+    const abn = (w.abnehmer || "").toLowerCase();
+    const isPelletSaegerest = (w.source === "pellets") &&
+                              (w.dataset === "saegerestholz") &&
+                              (abn.includes("sägerestholz") || abn.includes("saegerestholz"));
+
+    if (isPelletSaegerest) {
+      triangleMarker = L.marker([c.lat,c.lon], {icon: hellgelbesDreieck});
+      attachWerkInteractions(triangleMarker, w, c);
+    }
 
     alleMarker.push({
       type:"firma",
-      marker:marker,
+      marker: circleMarker,      // Standard-Referenz, wird in updateLayers umgeschaltet
+      circleMarker,
+      triangleMarker,
       firma:w.firma,
       ort:w.ort,
       preis:w.preis,
@@ -479,7 +504,8 @@ async function buildMap(){
       sack:(w.sack||""),
       abnehmer:(w.abnehmer||""),
       country_code: (c.country_code || ""),
-      dataset: w.dataset
+      dataset: w.dataset,
+      source: w.source
     });
     bounds.extend([c.lat,c.lon]);
   }
@@ -533,7 +559,12 @@ function updateCountryButtonLabel() {
 }
 
 function updateLayers(){
-  alleMarker.forEach(m=>{ if(map.hasLayer(m.marker)) map.removeLayer(m.marker); });
+  // alle alten Marker entfernen (Kreise + Dreiecke)
+  alleMarker.forEach(m=>{
+    if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker);
+    if (m.circleMarker && map.hasLayer(m.circleMarker)) map.removeLayer(m.circleMarker);
+    if (m.triangleMarker && map.hasLayer(m.triangleMarker)) map.removeLayer(m.triangleMarker);
+  });
 
   const selectedCountries = getSelectedCountries();
   const noCountryFilter = selectedCountries.length === 1 && selectedCountries[0] === "all";
@@ -559,11 +590,11 @@ function updateLayers(){
   const showSaeg    = document.getElementById("chkSaegerestholzNord").checked;
 
   for(const m of alleMarker){
-    // Kunden -> nur wenn Pellets aktiv
+    // Kunden
     if(m.type === "kunde"){
       if (kundenFlag && showPellets) {
         if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
-          map.addLayer(m.marker);
+          m.marker && map.addLayer(m.marker);
         }
       }
       continue;
@@ -571,13 +602,14 @@ function updateLayers(){
     if(m.type === "sackkunde"){
       if (sackKundenFlag && showPellets) {
         if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
-          map.addLayer(m.marker);
+          m.marker && map.addLayer(m.marker);
         }
       }
       continue;
     }
 
     // Firmen
+    // Dataset-Filter: Pellet vs Sägerestholz Nord
     if (m.dataset === "pellets" && !showPellets) continue;
     if (m.dataset === "saegerestholz" && !showSaeg) continue;
 
@@ -617,14 +649,36 @@ function updateLayers(){
       if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
     }
 
-    // Nur Kreis-Marker haben setStyle – Dreiecke (L.marker) nicht
-    if (m.marker.setStyle) {
-      m.marker.setStyle({color:aktiveFarbe, fillColor:aktiveFarbe});
+    // Entscheiden: Kreis oder hellgelbes Dreieck?
+    let layerToUse = m.circleMarker || m.marker;
+
+    const abn = (m.abnehmer || "").toLowerCase();
+    const isPelletSaegerest = (m.source === "pellets") &&
+                              (m.dataset === "saegerestholz") &&
+                              (abn.includes("sägerestholz") || abn.includes("saegerestholz"));
+
+    // Dreieck NUR wenn:
+    // - Firma kommt aus Pellet-Tabelle (source=pellets)
+    // - Abnehmer=Sägerestholz (dataset=saegerestholz)
+    // - UND Pellets-Checkbox ist AUS
+    if (isPelletSaegerest && !showPellets && m.triangleMarker) {
+      layerToUse = m.triangleMarker;
     }
-    if (m.marker.getTooltip()) {
-      m.marker.getTooltip().setContent( tooltipHtmlFromMarker(m) );
+
+    // Style nur auf Kreise anwenden
+    if (layerToUse && layerToUse.setStyle) {
+      layerToUse.setStyle({color:aktiveFarbe, fillColor:aktiveFarbe});
     }
-    map.addLayer(m.marker);
+
+    // Tooltip ggf. aktualisieren
+    if (layerToUse && layerToUse.getTooltip) {
+      layerToUse.getTooltip().setContent( tooltipHtmlFromMarker(m) );
+    }
+
+    m.marker = layerToUse; // für Suche & spätere Entfernung
+    if (layerToUse) {
+      map.addLayer(layerToUse);
+    }
   }
 }
 
@@ -727,7 +781,9 @@ document.getElementById("searchInput").addEventListener("keydown", e => {
     const query = e.target.value.toLowerCase().trim();
     if(!query) return;
     const treffer = alleMarker.find(m =>
-      m.marker.getTooltip && m.marker.getTooltip().getContent &&
+      m.marker &&
+      m.marker.getTooltip &&
+      m.marker.getTooltip().getContent &&
       String(m.marker.getTooltip().getContent()).toLowerCase().includes(query)
     );
     if(treffer){
@@ -745,3 +801,4 @@ document.getElementById("searchInput").addEventListener("keydown", e => {
 </script>
 </body>
 </html>
+
