@@ -3,58 +3,676 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Holz Markt – Grundkarte</title>
-
-  <!-- Leaflet CSS -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-  />
-
-  <!-- Optional: Papaparse, falls du später CSV laden willst -->
+  <title>Pelletwerke – Europa Preiskarte</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
-
   <style>
-    html, body {
-      height: 100%;
-      margin: 0;
+    html,body{height:100%;margin:0}
+    #map{width:100%;height:100%}
+
+    /* Grundboxen */
+    .legend, .cert-box {
+      position:absolute;background:#fff;padding:8px 10px;
+      border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.12);
+      font:14px/1.3 system-ui,Arial,sans-serif;
     }
-    #map {
+
+    /* Zertifikate-Box unten links */
+    .cert-box{
+      bottom:12px;
+      left:12px;
+      z-index:1000;
+    }
+
+    /* Legende unten rechts */
+    .legend{
+      bottom:12px;
+      right:12px;
+      min-width:180px;
+      z-index:3000;
+    }
+
+    .cert-box input[type="checkbox"],
+    .legend input[type="checkbox"]{
+      width:14px;height:14px;margin-right:5px;vertical-align:middle;
+    }
+
+    .search-box{
+      position:absolute;top:12px;right:12px;z-index:1500;
+      background:#fff;padding:8px 10px;border-radius:6px;
+      box-shadow:0 2px 8px rgba(0,0,0,.15);
+      font:14px system-ui,Arial,sans-serif;
+      width:260px;
+    }
+    .search-box input{
+      width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;outline:none;
+      box-sizing:border-box;
+      margin-left:4px;
+    }
+    .cert-box hr{border:none;height:1px;background:#eee;margin:6px 0}
+
+    /* custom dropdown */
+    .country-dropdown {
+      position: relative;
+      display: block;
       width: 100%;
-      height: 100%;
+      margin-top:8px;
+    }
+    .country-dropdown-button {
+      width: 100%;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 4px 6px;
+      text-align: left;
+      cursor: pointer;
+      box-sizing:border-box;
+    }
+    .country-dropdown-button:after {
+      content: "▾";
+      float: right;
+      opacity: .6;
+    }
+    .country-dropdown-menu {
+      position: absolute;
+      top: 110%;
+      left: 0;
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.12);
+      z-index: 4000;          /* ganz vorne */
+      display: none;
+      min-width: 160px;
+      max-height: 260px;      /* höher, scrollbar */
+      overflow-y: auto;
+      padding: 6px 8px;
+      box-sizing:border-box;
+    }
+    .country-dropdown-menu label {
+      display: block;
+      cursor: pointer;
+      margin-bottom: 3px;
     }
   </style>
 </head>
 <body>
-
-<!-- Karte -->
 <div id="map"></div>
 
-<!-- Leaflet JS -->
+<!-- Suche + Länderfilter -->
+<div class="search-box">
+  🔍 <input type="text" id="searchInput" placeholder="Firma, Kunde oder Ort suchen…" />
+
+  <b style="display:block;margin-top:6px;">Land / Länder filtern</b>
+  <div class="country-dropdown" id="countryDropdown">
+    <div class="country-dropdown-button" id="countryDropdownBtn">Alle Länder</div>
+    <div class="country-dropdown-menu" id="countryDropdownMenu">
+      <label><input type="checkbox" class="countryChk" value="all" checked> Alle</label>
+      <label><input type="checkbox" class="countryChk" value="de"> Deutschland</label>
+      <label><input type="checkbox" class="countryChk" value="at"> Österreich</label>
+      <label><input type="checkbox" class="countryChk" value="pl"> Polen</label>
+      <label><input type="checkbox" class="countryChk" value="cz"> Tschechien</label>
+      <label><input type="checkbox" class="countryChk" value="fr"> Frankreich</label>
+      <label><input type="checkbox" class="countryChk" value="ch"> Schweiz</label>
+      <label><input type="checkbox" class="countryChk" value="be"> Belgien</label>
+      <label><input type="checkbox" class="countryChk" value="sk"> Slowakei</label>
+    </div>
+  </div>
+</div>
+
+<!-- Zertifikate + Sackware -->
+<div class="cert-box">
+  <b>Zertifikate & Sackware</b><br>
+  <label><input type="checkbox" id="chkEnPlus" checked> EnPlus</label><br>
+  <label><input type="checkbox" id="chkDINplus" checked> DINplus</label><br>
+  <label><input type="checkbox" id="chkSURE" checked> SURE</label><br>
+  <label><input type="checkbox" id="chkCPP" checked> CPP</label><br><!-- NEU -->
+  <label><input type="checkbox" id="chkOhneZert" checked> Kein Zertifikat</label>
+  <hr>
+  <b>Sackware</b><br>
+  <label><input type="checkbox" id="chkSackFireflies"> FireFlies</label><br>
+  <label><input type="checkbox" id="chkSack15kg"> 15 kg</label>
+</div>
+
+<!-- Legende nur für Farben + Kunden, unten rechts -->
+<div class="legend">
+  <b>Filter Farben</b><br>
+  <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 260 €</label><br>
+  <label><input type="checkbox" id="chkOrange" checked> 🟠 260–285 €</label><br>
+  <label><input type="checkbox" id="chkRot" checked> 🔴 ≥ 285 €</label><br>
+  <label><input type="checkbox" id="chkGrau" checked> ⚪ kein Preis</label><br>
+  <label><input type="checkbox" id="chkKunden" checked> 🔷 Kunden</label><br>
+  <label><input type="checkbox" id="chkSackKunden" checked> 🟣 Sackwaren-Kunden</label>
+</div>
+
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
 <script>
-  // Grundkarte erstellen
-  const map = L.map('map').setView([51, 11], 6); // Mitte Deutschland, Zoom 6
+const map = L.map("map").setView([51, 11], 5);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  minZoom: 4, maxZoom: 10, attribution: "&copy; OpenStreetMap"
+}).addTo(map);
 
-  // Hintergrundkarte (Tiles)
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap-Mitwirkende',
-    minZoom: 2,
-    maxZoom: 18
-  }).addTo(map);
+function colorForPrice(p, keinPreis) {
+  if (keinPreis) return "#9e9e9e";
+  if (!p || p <= 0 || isNaN(p)) return "#9e9e9e";
+  if (p <= 260) return "green";
+  if (p < 285) return "orange";
+  return "red";
+}
 
-  // Beispiel-Marker (kannst du später löschen)
-  const beispielMarker = L.marker([52.52, 13.405]).addTo(map); // Berlin
-  beispielMarker.bindPopup('<b>Beispiel-Marker</b><br>Hier kannst du später Werke/Kunden anzeigen.');
+const geoCache = JSON.parse(localStorage.getItem("geoCachePellets_EU") || "{}");
+async function geocode(q) {
+  if (geoCache[q] && geoCache[q].country_code) {
+    return geoCache[q];
+  }
+  const r = await fetch(
+    `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(q)}&limit=1&accept-language=de`
+  );
+  const d = await r.json();
+  if (d.length) {
+    const item = d[0];
+    const obj = {
+      lat: +item.lat,
+      lon: +item.lon,
+      country: item.address && item.address.country ? item.address.country : "",
+      country_code: item.address && item.address.country_code ? item.address.country_code.toLowerCase() : ""
+    };
+    geoCache[q] = obj;
+    localStorage.setItem("geoCachePellets_EU", JSON.stringify(geoCache));
+    return obj;
+  }
+  console.warn("Kein Geocode-Treffer:", q);
+  return null;
+}
 
-  /* 
-   * HIER SPÄTER:
-   * - CSV laden (Papa.parse)
-   * - Marker für Werke/Kunden erzeugen
-   * - Filter, Legende, usw. einbauen
-   */
+const blauesDreieck = L.divIcon({
+  className: "custom-triangle",
+  html: `<svg width="24" height="24" viewBox="0 0 24 24">
+           <polygon points="12,2 22,22 2,22" fill="blue" stroke="black" stroke-width="1"/>
+         </svg>`,
+  iconAnchor: [12,22],
+  popupAnchor: [0,-20]
+});
+const lilaDreieck = L.divIcon({
+  className: "custom-triangle-purple",
+  html: `<svg width="24" height="24" viewBox="0 0 24 24">
+           <polygon points="12,2 22,22 2,22" fill="purple" stroke="black" stroke-width="1"/>
+         </svg>`,
+  iconAnchor: [12,22],
+  popupAnchor: [0,-20]
+});
+
+const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
+const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
+
+let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
+
+// NEU: Durchschnittspreise pro Land (Werkspreis)
+let avgPriceByCountry = {};
+
+function parseFirmenWithHeader(rows){
+  const lc = (s)=>String(s||"").toLowerCase();
+  const keys = Object.keys(rows[0]||{});
+  const findKey = (cands) => keys.find(k => cands.includes(lc(k)));
+
+  const nameKey = findKey(["firma","name","werk"]) || keys[0];
+  const ortKey  = findKey(["ort","stadt","location","standort","adresse"]) || keys[1];
+
+  const preisKey = findKey(["preis","price","€/t","euro","euro_t","werkspreis"]);
+  const sackPreisKey = findKey(["preis_sack","preis sack","sackpreis","bag_price","sackwarepreis","sackware preis","sackwarenpreis","preis_e"]);
+
+  const zertKey = findKey(["zertifikate","zertifikat","zert","cert"]);
+  const sackKey = findKey(["sackware","sack","bag","bagged"]);
+
+  return rows
+    .filter(x => (x?.[nameKey]||"").toString().trim() && (x?.[ortKey]||"").toString().trim())
+    .map(x => ({
+      firma: (x[nameKey]||"").toString().trim(),
+      ort: (x[ortKey]||"").toString().trim(),
+      preis: parseFloat(String(x?.[preisKey] ?? "0").replace(",", ".")),
+      preisSack: parseFloat(String(x?.[sackPreisKey] ?? "0").replace(",", ".")),
+      zert: (x?.[zertKey]||"").toString().trim(),
+      sack: (x?.[sackKey]||"").toString().trim()
+    }));
+}
+
+async function ladeDaten() {
+  const firmenPromise = new Promise((resolve) => {
+    Papa.parse(sheetUrlFirmen, {
+      download: true, header: true,
+      complete: (r) => {
+        try{
+          let daten = [];
+          if (r.data && r.data.length && Object.keys(r.data[0]||{}).length > 1) {
+            daten = parseFirmenWithHeader(r.data);
+          }
+          if (!daten.length) {
+            Papa.parse(sheetUrlFirmen, {
+              download: true, header: false,
+              complete: (r2) => {
+                const rows = r2.data.filter(row => row.length >= 8 && row[0] && row[1]);
+                const daten2 = rows.map(row => ({
+                  firma: (row[0]||"").trim(),
+                  ort:   (row[1]||"").trim(),
+                  preis: parseFloat(String(row[2]||"0").replace(",", ".")),
+                  preisSack: parseFloat(String(row[4]||"0").replace(",", ".")),
+                  zert:  (row[6]||"").trim(),
+                  sack:  (row[7]||"").trim()
+                }));
+                resolve(normalizePreise(daten2));
+              }
+            });
+            return;
+          }
+          resolve(normalizePreise(daten));
+        }catch(e){
+          console.error("Header-Parsing Fehler:", e);
+          resolve([]);
+        }
+      }
+    });
+  });
+
+  const kundenPromise = new Promise((resolve)=>{
+    Papa.parse(sheetUrlKunden, {
+      download:true, header:true,
+      complete:(r)=>{
+        const headers = Object.keys(r.data[0]||{});
+        const nameKey = headers.find(h=>h.toLowerCase().includes("name"))||"name";
+        const ortKey = headers.find(h=>["ort","adresse","standort","anschrift","stadt","location"].includes(h.toLowerCase()))||"ort";
+        const loseKey = headers.find(h=>h.toLowerCase()==="lose") || "lose";
+        const sackKey = headers.find(h=>h.toLowerCase()==="sackware") || "sackware";
+
+        const kundenDaten = r.data
+          .map(x=>({
+            name:(x[nameKey]||"").trim(),
+            ort:(x[ortKey]||"").trim(),
+            lose:(x[loseKey]||"").trim().toLowerCase(),
+            sackware:(x[sackKey]||"").trim().toLowerCase()
+          }))
+          .filter(x=>x.name && x.ort);
+
+        resolve(kundenDaten);
+      }
+    });
+  });
+
+  const [firmen, kundenDaten] = await Promise.all([firmenPromise, kundenPromise]);
+  werke = firmen; kunden = kundenDaten;
+}
+
+function normalizePreise(daten){
+  const gültigeWerk = daten.filter(w => !isNaN(w.preis) && w.preis > 0);
+  const gültigeSack = daten.filter(w => !isNaN(w.preisSack) && w.preisSack > 0);
+  const avgWerk = gültigeWerk.length ? (gültigeWerk.reduce((a,b)=>a+b.preis,0)/gültigeWerk.length) : 0;
+  const avgSack = gültigeSack.length ? (gültigeSack.reduce((a,b)=>a+b.preisSack,0)/gültigeSack.length) : 0;
+
+  return daten.map(w=>{
+    if(isNaN(w.preis)||w.preis<=0){w.preis=avgWerk;w.keinPreisWerk=true;}else w.keinPreisWerk=false;
+    if(isNaN(w.preisSack)||w.preisSack<=0){w.preisSack=avgSack;w.keinPreisSack=true;}else w.keinPreisSack=false;
+    w.farbeWerk = colorForPrice(w.preis, w.keinPreisWerk);
+    w.farbeSack = colorForPrice(w.preisSack, w.keinPreisSack);
+    return w;
+  });
+}
+
+function sackFilterAktiv(){
+  const wantFireflies = document.getElementById("chkSackFireflies").checked;
+  const want15kg      = document.getElementById("chkSack15kg").checked;
+  return (wantFireflies || want15kg);
+}
+
+// NEU: Durchschnittspreise pro Land berechnen (Werkspreis)
+function berechneDurchschnittProLand(){
+  const sums = {};
+  const counts = {};
+  alleMarker.forEach(m => {
+    if (m.type !== "firma") return;
+    const cc = m.country_code || "";
+    if (!cc) return;
+    const preis = m.preis;
+    if (!isFinite(preis) || preis <= 0) return;
+    if (!sums[cc]) { sums[cc] = 0; counts[cc] = 0; }
+    sums[cc] += preis;
+    counts[cc] += 1;
+  });
+  avgPriceByCountry = {};
+  Object.keys(sums).forEach(cc => {
+    avgPriceByCountry[cc] = sums[cc] / counts[cc];
+  });
+}
+
+function tooltipHtmlFromMarker(m){
+  const useSack = sackFilterAktiv();
+  const preisNow = useSack && isFinite(m.preisSack) && m.preisSack > 0 ? m.preisSack : m.preis;
+  const preisTxt = isFinite(preisNow) && preisNow > 0 ? `${preisNow.toFixed(2)} €` : "–";
+  const zertInfo = m.zert ? `<br><b>Zertifikat:</b> ${m.zert}` : "";
+  const sackInfo = m.sack ? `<br><b>Sackware:</b> ${m.sack}` : "";
+
+  // NEU: Landesdurchschnitt im Tooltip
+  let avgTxt = "";
+  const avg = avgPriceByCountry[m.country_code];
+  if (avg && isFinite(avg)) {
+    avgTxt = `<br><b>Landesdurchschnitt:</b> ${avg.toFixed(2)} €`;
+  }
+
+  return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${avgTxt}`;
+}
+
+async function buildMap(){
+  alleMarker = [];
+  const bounds=L.latLngBounds();
+
+  // Werke
+  for(const w of werke){
+    const c=geoCache[w.ort] && geoCache[w.ort].country_code ? geoCache[w.ort] : await geocode(w.ort);
+    if(!c)continue;
+
+    const farbeInit = sackFilterAktiv() ? w.farbeSack : w.farbeWerk;
+
+    const m=L.circleMarker([c.lat,c.lon],{radius:8,color:farbeInit,fillColor:farbeInit,fillOpacity:0.85})
+      .bindTooltip("", {sticky:true})
+      .on("tooltipopen", () => {
+        m.getTooltip().setContent( tooltipHtmlFromMarker({
+          firma:w.firma, ort:w.ort,
+          preis:w.preis, preisSack:w.preisSack,
+          zert:(w.zert||""),
+          sack:(w.sack||""),
+          country_code: (c.country_code || "")
+        }));
+      })
+      .on("click",()=>handleMarkerClick(w.firma,c));
+
+    alleMarker.push({
+      type:"firma",
+      marker:m,
+      firma:w.firma,
+      ort:w.ort,
+      preis:w.preis,
+      preisSack:w.preisSack,
+      keinPreisWerk:w.keinPreisWerk,
+      keinPreisSack:w.keinPreisSack,
+      farbeWerk:w.farbeWerk,
+      farbeSack:w.farbeSack,
+      zert:(w.zert||"").toLowerCase(),
+      sack:(w.sack||""),
+      country_code: (c.country_code || "")
+    });
+    bounds.extend([c.lat,c.lon]);
+  }
+
+  // Kunden
+  for(const k of kunden){
+    const c=geoCache[k.ort] && geoCache[k.ort].country_code ? geoCache[k.ort] : await geocode(k.ort);
+    if(!c)continue;
+
+    const isSackOnly = (k.sackware === "ja") && (k.lose !== "ja");
+    const iconToUse = isSackOnly ? lilaDreieck : blauesDreieck;
+
+    const m=L.marker([c.lat,c.lon],{icon:iconToUse})
+      .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
+      .on("click",()=>handleMarkerClick(k.name,c));
+
+    alleMarker.push({
+      type: isSackOnly ? "sackkunde" : "kunde",
+      marker:m,
+      country_code: (c.country_code || "")
+    });
+
+    bounds.extend([c.lat,c.lon]);
+  }
+
+  // NEU: nachdem alle Firmen-Marker da sind, Durchschnitt je Land berechnen
+  berechneDurchschnittProLand();
+
+  if(bounds.isValid())map.fitBounds(bounds.pad(0.15));
+  updateLayers();
+}
+
+// liest alle angehakten Länder aus dem Dropdown
+function getSelectedCountries() {
+  const chks = document.querySelectorAll(".countryChk");
+  const selected = [];
+  chks.forEach(ch => {
+    if (ch.checked) selected.push(ch.value);
+  });
+  // wenn "all" angehakt ist oder nichts -> ["all"]
+  if (selected.length === 0 || selected.includes("all")) return ["all"];
+  return selected;
+}
+
+function updateCountryButtonLabel() {
+  const selected = getSelectedCountries();
+  const btn = document.getElementById("countryDropdownBtn");
+  if (selected.length === 1 && selected[0] === "all") {
+    btn.textContent = "Alle Länder";
+  } else {
+    // kleine Labels
+    const names = {
+      de: "DE",
+      at: "AT",
+      pl: "PL",
+      cz: "CZ",
+      fr: "FR",
+      ch: "CH",
+      be: "BE",
+      sk: "SK"
+    };
+    btn.textContent = selected.map(c => names[c] || c).join(", ");
+  }
+}
+
+function updateLayers(){
+  alleMarker.forEach(m=>{ if(map.hasLayer(m.marker)) map.removeLayer(m.marker); });
+
+  const selectedCountries = getSelectedCountries();
+  const noCountryFilter = selectedCountries.length === 1 && selectedCountries[0] === "all";
+
+  const en         = document.getElementById("chkEnPlus").checked;
+  const din        = document.getElementById("chkDINplus").checked;
+  const sure       = document.getElementById("chkSURE").checked;
+  const cpp        = document.getElementById("chkCPP").checked;   // NEU
+  const ohne       = document.getElementById("chkOhneZert").checked;
+
+  const gruen      = document.getElementById("chkGruen").checked;
+  const orange     = document.getElementById("chkOrange").checked;
+  const rot        = document.getElementById("chkRot").checked;
+  const grau       = document.getElementById("chkGrau").checked;
+  const kundenFlag = document.getElementById("chkKunden").checked;
+  const sackKundenFlag = document.getElementById("chkSackKunden").checked;
+
+  const wantFireflies = document.getElementById("chkSackFireflies").checked;
+  const want15kg      = document.getElementById("chkSack15kg").checked;
+  const useSack       = (wantFireflies || want15kg);
+
+  for(const m of alleMarker){
+    // Kunden
+    if(m.type === "kunde"){
+      if (kundenFlag) {
+        if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
+          map.addLayer(m.marker);
+        }
+      }
+      continue;
+    }
+    if(m.type === "sackkunde"){
+      if (sackKundenFlag) {
+        if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
+          map.addLayer(m.marker);
+        }
+      }
+      continue;
+    }
+
+    // Firmen
+    if (useSack) {
+      const sNorm = (m.sack||"").toLowerCase().replace(/\s+/g,' ').trim();
+      const hasFireflies = sNorm.includes("fireflies");
+      const has15kg = sNorm.includes("15 kg") || sNorm.includes("15kg");
+      if (wantFireflies && !want15kg && !hasFireflies) continue;
+      if (want15kg && !wantFireflies && !has15kg) continue;
+      if (wantFireflies && want15kg && !(hasFireflies || has15kg)) continue;
+    }
+
+    const z = m.zert || "";
+    let zertOK = false;
+    if(z.includes("enplus") && en) zertOK = true;
+    if(z.includes("dinplus") && din) zertOK = true;
+    if(z.includes("sure") && sure) zertOK = true;
+    if(z.includes("cpp") && cpp) zertOK = true;   // NEU
+    if(!z && ohne) zertOK = true;
+    if(!zertOK) continue;
+
+    const aktiveFarbe = useSack ? m.farbeSack : m.farbeWerk;
+
+    const isGruen  = aktiveFarbe === "green";
+    const isOrange = aktiveFarbe === "orange";
+    const isRot    = aktiveFarbe === "red";
+    const isGrau   = aktiveFarbe === "#9e9e9e";
+
+    let sichtbar = false;
+    if(isGruen && gruen) sichtbar = true;
+    if(isOrange && orange) sichtbar = true;
+    if(isRot && rot) sichtbar = true;
+    if(isGrau && grau) sichtbar = true;
+    if(!sichtbar) continue;
+
+    // Länderfilter
+    if (!noCountryFilter) {
+      if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
+    }
+
+    m.marker.setStyle({color:aktiveFarbe, fillColor:aktiveFarbe});
+    if (m.marker.getTooltip()) {
+      // Tooltip ggf. mit aktuellem Landesdurchschnitt neu setzen
+      m.marker.getTooltip().setContent( tooltipHtmlFromMarker(m) );
+    }
+    map.addLayer(m.marker);
+  }
+}
+
+function handleMarkerClick(label,coord){
+  selectedPoints.push({label,coord});
+  if(selectedPoints.length===2){
+    const [a,b]=selectedPoints;
+    showRoute(a,b);
+    selectedPoints=[];
+  }
+}
+
+async function showRoute(a,b){
+  const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
+  const res = await fetch(url);
+  const data = await res.json();
+  if(data.routes && data.routes.length){
+    const route = data.routes[0];
+    const dist = (route.distance/1000).toFixed(1);
+    const durationMin = route.duration/60;
+    const hours = Math.floor(durationMin/60);
+    const minutes = Math.round(durationMin%60);
+    const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
+    const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
+
+    const useSack = sackFilterAktiv();
+    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
+    const firmenPreis = firmeneintrag
+      ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
+      : 0;
+
+    const preisProKm = parseFloat(dist) < 250 ? 2.15 : 1.85;
+    const teilstrecke = parseFloat(dist) / 24;
+    const berechnung = teilstrecke * preisProKm;
+    const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
+
+    if(routeLine) map.removeLayer(routeLine);
+    routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
+    const mid = coords[Math.floor(coords.length/2)];
+    L.popup().setLatLng(mid).setContent(`
+      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+      <b>Entfernung:</b> ${dist} km<br>
+      <b>Dauer:</b> ${durationStr}<br>
+      <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+      <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
+      <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
+    `).openOn(map);
+    map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
+  } else alert("Keine Route gefunden!");
+}
+
+// Klick auf „leere“ Karte entfernt Strecke & Popup, aber Marker/Routeklick bleibt normal
+map.on('click', (e) => {
+  const t = e.originalEvent && e.originalEvent.target;
+  if (t && t.closest) {
+    // Wenn auf Marker, Popup oder Linie geklickt -> nichts machen
+    if (t.closest('.leaflet-marker-icon') ||
+        t.closest('.leaflet-popup') ||
+        t.closest('.leaflet-interactive')) {
+      return;
+    }
+  }
+  if (routeLine) {
+    map.removeLayer(routeLine);
+    routeLine = null;
+  }
+  selectedPoints = [];
+  map.closePopup();
+});
+
+// globale Change-Listener
+document.addEventListener("change", e => {
+  if (e.target && e.target.matches('input[type="checkbox"]')) {
+    // wenn es eine der Länder-Checkboxen ist:
+    if (e.target.classList.contains("countryChk")) {
+      // wenn "Alle" angeklickt wird -> alle anderen aus
+      if (e.target.value === "all" && e.target.checked) {
+        document.querySelectorAll(".countryChk").forEach(ch => {
+          if (ch.value !== "all") ch.checked = false;
+        });
+      } else if (e.target.value !== "all" && e.target.checked) {
+        // wenn ein Land angehakt wird -> "Alle" aus
+        const allChk = document.querySelector('.countryChk[value="all"]');
+        allChk.checked = false;
+      }
+      updateCountryButtonLabel();
+    }
+    updateLayers();
+  }
+});
+
+// dropdown auf/zu
+document.getElementById("countryDropdownBtn").addEventListener("click", () => {
+  const menu = document.getElementById("countryDropdownMenu");
+  menu.style.display = (menu.style.display === "block") ? "none" : "block";
+});
+
+// außerhalb klicken -> zu
+document.addEventListener("click", (e) => {
+  const dd = document.getElementById("countryDropdown");
+  if (!dd.contains(e.target)) {
+    document.getElementById("countryDropdownMenu").style.display = "none";
+  }
+});
+
+document.getElementById("searchInput").addEventListener("keydown", e => {
+  if(e.key === "Enter"){
+    const query = e.target.value.toLowerCase().trim();
+    if(!query) return;
+    const treffer = alleMarker.find(m =>
+      m.marker.getTooltip && m.marker.getTooltip().getContent &&
+      String(m.marker.getTooltip().getContent()).toLowerCase().includes(query)
+    );
+    if(treffer){
+      const latlng = treffer.marker.getLatLng();
+      map.setView(latlng,9);
+      treffer.marker.openTooltip();
+    } else alert("Kein Treffer gefunden.");
+  }
+});
+
+(async ()=>{
+  await ladeDaten();
+  await buildMap();
+})();
 </script>
-
 </body>
 </html>
