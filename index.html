@@ -223,7 +223,7 @@ function parseFirmenWithHeader(rows){
   const zertKey = findKey(["zertifikate","zertifikat","zert","cert"]);
   const sackKey = findKey(["sackware","sack","bag","bagged"]);
 
-  // NEU: Abnehmer-Spalte
+  // Abnehmer-Spalte
   const abnehmerKey = findKey(["abnehmer","kunde","kunden","buyer","customer"]);
 
   return rows
@@ -340,7 +340,9 @@ async function ladeDaten() {
 
   const [pellets, saegerestholz, kundenDaten] = await Promise.all([pelletsPromise, saegPromise, kundenPromise]);
 
-  // HIER: Abnehmer auswerten
+  // Firmen aus Pellet-Tabelle nach Abnehmer klassifizieren:
+  // - Abnehmer enthält "Sägerestholz" -> dataset: "saegerestholz" (Dreieck)
+  // - sonst -> dataset: "pellets" (Kreis)
   const pelletsMitDataset = pellets.map(w => {
     const abn = (w.abnehmer || "").toLowerCase();
     const istSaegerest = abn.includes("sägerestholz") || abn.includes("saegerestholz");
@@ -432,10 +434,25 @@ async function buildMap(){
 
     const farbeInit = sackFilterAktiv() ? w.farbeSack : w.farbeWerk;
 
-    const m=L.circleMarker([c.lat,c.lon],{radius:8,color:farbeInit,fillColor:farbeInit,fillOpacity:0.85})
+    // Kreis oder Dreieck je nach dataset
+    let marker;
+    if (w.dataset === "saegerestholz") {
+      // Sägerestholz Nord -> Dreieck
+      marker = L.marker([c.lat,c.lon], {icon: blauesDreieck});
+    } else {
+      // normale Pelletwerke -> Kreis
+      marker = L.circleMarker([c.lat,c.lon],{
+        radius:8,
+        color:farbeInit,
+        fillColor:farbeInit,
+        fillOpacity:0.85
+      });
+    }
+
+    marker
       .bindTooltip("", {sticky:true})
       .on("tooltipopen", () => {
-        m.getTooltip().setContent( tooltipHtmlFromMarker({
+        marker.getTooltip().setContent( tooltipHtmlFromMarker({
           firma:w.firma, ort:w.ort,
           preis:w.preis, preisSack:w.preisSack,
           zert:(w.zert||""),
@@ -449,7 +466,7 @@ async function buildMap(){
 
     alleMarker.push({
       type:"firma",
-      marker:m,
+      marker:marker,
       firma:w.firma,
       ort:w.ort,
       preis:w.preis,
@@ -600,7 +617,10 @@ function updateLayers(){
       if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
     }
 
-    m.marker.setStyle({color:aktiveFarbe, fillColor:aktiveFarbe});
+    // Nur Kreis-Marker haben setStyle – Dreiecke (L.marker) nicht
+    if (m.marker.setStyle) {
+      m.marker.setStyle({color:aktiveFarbe, fillColor:aktiveFarbe});
+    }
     if (m.marker.getTooltip()) {
       m.marker.getTooltip().setContent( tooltipHtmlFromMarker(m) );
     }
