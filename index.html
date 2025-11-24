@@ -207,20 +207,12 @@ const lilaDreieck = L.divIcon({
   popupAnchor: [0,-20]
 });
 
-/* Beide Blätter sind in derselben Datei (dein Link) */
-
-/* Pellets = Standardblatt (z.B. erstes Blatt) */
+/* Deine Datei mit beiden Blättern */
 const sheetUrlPellets = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
-
-/* SÄGERESTHOLZ NORD = Blatt mit gid=1423782020 */
 const sheetUrlSaegerestholz = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv&gid=1423782020";
-
-/* Kunden-Tabelle (falls separat) */
 const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
 
 let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
-
-// Durchschnittspreise pro Land (Werkspreis)
 let avgPriceByCountry = {};
 
 function parseFirmenWithHeader(rows){
@@ -250,7 +242,6 @@ function parseFirmenWithHeader(rows){
 }
 
 async function ladeDaten() {
-  // Pellets-Daten
   const pelletsPromise = new Promise((resolve) => {
     Papa.parse(sheetUrlPellets, {
       download: true, header: true,
@@ -287,7 +278,6 @@ async function ladeDaten() {
     });
   });
 
-  // SÄGERESTHOLZ NORD
   const saegPromise = new Promise((resolve) => {
     Papa.parse(sheetUrlSaegerestholz, {
       download: true, header: true,
@@ -324,7 +314,6 @@ async function ladeDaten() {
     });
   });
 
-  // Kunden
   const kundenPromise = new Promise((resolve)=>{
     Papa.parse(sheetUrlKunden, {
       download:true, header:true,
@@ -379,7 +368,6 @@ function sackFilterAktiv(){
   return (wantFireflies || want15kg);
 }
 
-// Durchschnittspreise pro Land berechnen (Werkspreis)
 function berechneDurchschnittProLand(){
   const sums = {};
   const counts = {};
@@ -463,7 +451,7 @@ async function buildMap(){
     bounds.extend([c.lat,c.lon]);
   }
 
-  // Kunden
+  // Kunden (Pellet-Kunden)
   for(const k of kunden){
     const c=geoCache[k.ort] && geoCache[k.ort].country_code ? geoCache[k.ort] : await geocode(k.ort);
     if(!c)continue;
@@ -547,8 +535,9 @@ function updateLayers(){
   const showSaeg    = document.getElementById("chkSaegerestholzNord").checked;
 
   for(const m of alleMarker){
+    // Kunden (Pellet-Kunden) – nur anzeigen, wenn Pellets aktiv ist
     if(m.type === "kunde"){
-      if (kundenFlag) {
+      if (kundenFlag && showPellets) {
         if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
           map.addLayer(m.marker);
         }
@@ -556,7 +545,7 @@ function updateLayers(){
       continue;
     }
     if(m.type === "sackkunde"){
-      if (sackKundenFlag) {
+      if (sackKundenFlag && showPellets) {
         if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
           map.addLayer(m.marker);
         }
