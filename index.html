@@ -429,7 +429,7 @@ function tooltipHtmlFromMarker(m){
 
   let dsTxt = "";
   if (m.dataset === "pellets") dsTxt = "<br><b>Datenquelle:</b> Pellets";
-  if (m.dataset === "saegerestholz") dsTxt = "<br><b>Datenquelle:</b> Sägerestholz Nord";
+  if (m.dataset === "saegerestholz") dsTxt = "<br><b>Produkt:</b> Sägerestholz Nord";
 
   const abnTxt = m.abnehmer ? `<br><b>Abnehmer:</b> ${m.abnehmer}` : "";
 
@@ -801,4 +801,3 @@ document.getElementById("searchInput").addEventListener("keydown", e => {
 </script>
 </body>
 </html>
-
