@@ -607,12 +607,15 @@ async function showRoute(a,b){
   const gesamtLkw = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
 
   // ---------- Sägespäne-Kalkulation ----------
+  // Wir schauen NUR, ob irgendwo im Produkt- / Unit-Text "Sägespäne" vorkommt.
   function istSaegespaeneWerk(w){
     if (!w) return false;
-    if (w.productType !== "saegerestholz") return false;
-    const txt = (w.produkt || "").toLowerCase().trim();
-    const txtNorm = txt.replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue");
-    return txt.includes("sägespäne") || txtNorm.includes("saegespaene");
+    const raw = ((w.produkt || "") + " " + (w.Unit || w.unit || "")).toLowerCase();
+    // ä -> ae usw normalisieren
+    const norm = raw
+      .normalize("NFD")
+      .replace(/\p{Diacritic}/gu,""); // Diakritika weg
+    return norm.includes("sagespane") || norm.includes("saegespaene");
   }
 
   const saegEintrag = istSaegespaeneWerk(werkA)
@@ -623,18 +626,19 @@ async function showRoute(a,b){
   let gesamtAnzeigeText = `${gesamtLkw} €`;   // Standard: LKW-Gesamt
 
   if (saegEintrag) {
-    // Preis aus Tabellenblatt "Sägerestholz Nord", Spalte "preis"
+    // Basispreis aus Tabellenblatt "Sägerestholz Nord", Spalte "preis" (z.B. 20,00 €)
     const basisPreisSrm = saegEintrag.preis || 20; // €/srm
     const ladungSrm = 85;
 
-    // Formel: (Preis_srm*85 + (2,5€/srm * Entfernung_km)) * 1,05 / 85
+    // Deine Formel:
+    // (Preis_srm * 85 + (2,5 €/srm * Entfernung_km)) * 1,05 / 85
     const grundpreisGesamt = basisPreisSrm * ladungSrm;
     const transportTeil = 2.5 * distKm;
     const sumVorZuschlag = grundpreisGesamt + transportTeil;
     const sumMit5Prozent = sumVorZuschlag * 1.05;
     const preisJeSrm = sumMit5Prozent / ladungSrm;
 
-    // In "Gesamtkosten" soll dieser Wert stehen
+    // ► In "Gesamtkosten" soll dieser Wert stehen (z.B. 24,11 €)
     gesamtAnzeigeText = `${preisJeSrm.toFixed(2)} €`;
 
     saegCalcHtml = `
@@ -662,7 +666,6 @@ async function showRoute(a,b){
   `).openOn(map);
   map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
 }
-
 // Route löschen bei Klick ins Leere
 map.on('click', (e) => {
   const t = e.originalEvent && e.originalEvent.target;
