@@ -597,7 +597,7 @@ async function showRoute(a,b){
 
   let saegCalcHtml = "";
   if (saegEintrag) {
-    const basisPreisSrm = 1;
+    const basisPreisSrm = 5;
     const ladungSrm = 85;
 
     const grundpreisGesamt = basisPreisSrm * ladungSrm;
