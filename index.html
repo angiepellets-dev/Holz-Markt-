@@ -233,6 +233,8 @@ function parseFirmenWithHeader(rows){
   const zertKey = findKey(["zertifikate","zertifikat","zert","cert"]);
   const sackKey = findKey(["sackware","sack","bag","bagged"]);
 
+  const produktKey = findKey(["produkt","produkte","product","products"]);
+
   // Abnehmer-Spalte
   const abnehmerKey = findKey(["abnehmer","kunde","kunden","buyer","customer"]);
 
@@ -245,6 +247,7 @@ function parseFirmenWithHeader(rows){
       preisSack: parseFloat(String(x?.[sackPreisKey] ?? "0").replace(",", ".")),
       zert: (x?.[zertKey]||"").toString().trim(),
       sack: (x?.[sackKey]||"").toString().trim(),
+      produkt: produktKey ? (x?.[produktKey] || "").toString().trim() : "",
       abnehmer: abnehmerKey ? (x?.[abnehmerKey] || "").toString().trim() : ""
     }));
 }
@@ -271,6 +274,7 @@ async function ladeDaten() {
                   preisSack: parseFloat(String(row[4]||"0").replace(",", ".")),
                   zert:  (row[6]||"").trim(),
                   sack:  (row[7]||"").trim(),
+                  produkt: "",
                   abnehmer: ""    // Fallback ohne Header
                 }));
                 resolve(normalizePreise(daten2));
@@ -307,7 +311,8 @@ async function ladeDaten() {
                   preis: parseFloat(String(row[2]||"0").replace(",", ".")),
                   preisSack: parseFloat(String(row[4]||"0").replace(",", ".")),
                   zert:  (row[6]||"").trim(),
-                  sack:  (row[7]||"").trim(),
+                  sack:  "",                       // falls andere Struktur
+                  produkt: (row[7]||"").trim(),    // Spalte H = Produkte
                   abnehmer: ""
                 }));
                 resolve(normalizePreise(daten2));
@@ -427,13 +432,21 @@ function tooltipHtmlFromMarker(m){
     avgTxt = `<br><b>Landesdurchschnitt:</b> ${avg.toFixed(2)} €`;
   }
 
-  let dsTxt = "";
-  if (m.dataset === "pellets") dsTxt = "<br><b>Produkt:</b> Pellets";
-  if (m.dataset === "saegerestholz") dsTxt = "<br><b>Produkt:</b> Sägerestholz Nord";
+  let produktTxt = "";
+  let unitTxt = "";
+
+  if (m.dataset === "pellets") {
+    produktTxt = "<br><b>Produkt:</b> Pellets";
+  } else if (m.dataset === "saegerestholz") {
+    unitTxt = "<br><b>Unit:</b> Sägerestholz Nord";
+    if (m.produkt) {
+      unitTxt += ` – ${m.produkt}`;
+    }
+  }
 
   const abnTxt = m.abnehmer ? `<br><b>Abnehmer:</b> ${m.abnehmer}` : "";
 
-  return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${abnTxt}${dsTxt}${avgTxt}`;
+  return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${abnTxt}${produktTxt}${unitTxt}${avgTxt}`;
 }
 
 // Helper zum Anhängen von Tooltip & Klick auf einen Marker
@@ -447,6 +460,7 @@ function attachWerkInteractions(layer, w, c){
         zert:(w.zert||""),
         sack:(w.sack||""),
         abnehmer:(w.abnehmer||""),
+        produkt:(w.produkt||""),
         dataset:w.dataset,
         country_code: (c.country_code || "")
       }));
@@ -503,6 +517,7 @@ async function buildMap(){
       zert:(w.zert||"").toLowerCase(),
       sack:(w.sack||""),
       abnehmer:(w.abnehmer||""),
+      produkt:(w.produkt||""),
       country_code: (c.country_code || ""),
       dataset: w.dataset,
       source: w.source
