@@ -201,7 +201,7 @@ const lilaDreieck = L.divIcon({
   popupAnchor: [0,-20]
 });
 
-// hellgelbes Dreieck (Pellet-Werk mit Abnehmer Sägerestholz)
+// hellgelbes Dreieck: Pellet-Werk mit Abnehmer=Sägerestholz
 const hellgelbesDreieck = L.divIcon({
   className: "custom-triangle-yellow",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -227,7 +227,7 @@ function parseFirmenWithHeader(rows){
   const nameKey = findKey(["firma","name","werk"]) || keys[0];
   const ortKey  = findKey(["ort","stadt","location","standort","adresse"]) || keys[1];
 
-  const preisKey = findKey(["preis","price","€/t","euro","euro_t","werkspreis"]);
+  const preisKey = findKey(["preis","price","€/t","euro","euro_t","werkspreis","€/srm","preis_srm"]);
   const sackPreisKey = findKey(["preis_sack","preis sack","sackpreis","bag_price","sackwarepreis","sackware preis","sackwarenpreis","preis_e"]);
 
   const zertKey = findKey(["zertifikate","zertifikat","zert","cert"]);
@@ -310,7 +310,7 @@ async function ladeDaten() {
                   preisSack: parseFloat(String(row[4]||"0").replace(",", ".")),
                   zert:  (row[6]||"").trim(),
                   sack:  "",
-                  produkt: (row[7]||"").trim(), // Spalte H = Produkte
+                  produkt: (row[7]||"").trim(), // Spalte H
                   abnehmer: ""
                 }));
                 resolve(normalizePreise(daten2));
@@ -358,7 +358,7 @@ async function ladeDaten() {
     const istSaegerest = abn.includes("sägerestholz") || abn.includes("saegerestholz");
     return {
       ...w,
-      dataset: "pellets",          // bleibt Pellets
+      dataset: "pellets",
       productType: "pellets",
       isSaegerAbnehmer: istSaegerest,
       source: "pellets"
@@ -449,7 +449,6 @@ function tooltipHtmlFromMarker(m){
     if (m.produkt) unitTxt += ` – ${m.produkt}`;
   } else if (m.dataset === "pellets") {
     if (isPelletSaegerAbnehmer) {
-      // Pellet-Lieferant für Sägerestholz => Unit Pellets, kein Abnehmer angezeigt
       unitTxt = "<br><b>Unit:</b> Pellets";
     } else {
       produktTxt = "<br><b>Produkt:</b> Pellets";
@@ -616,7 +615,7 @@ function updateLayers(){
   const showSaeg    = document.getElementById("chkSaegerestholzNord").checked;
 
   for(const m of alleMarker){
-    // Kunden (bleiben an Pellets-Produkt gekoppelt)
+    // Kunden
     if(m.type === "kunde"){
       if (kundenFlag && showPellets) {
         if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
@@ -640,7 +639,7 @@ function updateLayers(){
       continue;
     }
     if (m.productType === "pellets") {
-      // Pellets aus, aber Pellets-Lieferant für Sägerestholz + Saegerestholz an => trotzdem anzeigen
+      // Pellets aus, aber Pellet-Lieferant für Sägerestholz + Sägerestholz an => trotzdem zeigen
       if (!showPellets && !(m.isSaegerAbnehmer && showSaeg)) continue;
     }
 
@@ -717,65 +716,77 @@ async function showRoute(a,b){
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
   const data = await res.json();
-  if(data.routes && data.routes.length){
-    const route = data.routes[0];
-    const dist = (route.distance/1000).toFixed(1);
-    const durationMin = route.duration/60;
-    const hours = Math.floor(durationMin/60);
-    const minutes = Math.round(durationMin%60);
-    const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
-    const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
+  if(!(data.routes && data.routes.length)){
+    alert("Keine Route gefunden!");
+    return;
+  }
 
-    const useSack = sackFilterAktiv();
-    const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
+  const route = data.routes[0];
+  const dist = (route.distance/1000).toFixed(1);   // km (String)
+  const durationMin = route.duration/60;
+  const hours = Math.floor(durationMin/60);
+  const minutes = Math.round(durationMin%60);
+  const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
+  const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
 
-    const firmenPreis = firmeneintrag
-      ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
-      : 0;
+  const useSack = sackFilterAktiv();
 
-    const preisProKm = parseFloat(dist) < 250 ? 2.15 : 1.85;
-    const teilstrecke = parseFloat(dist) / 24;
-    const berechnung = teilstrecke * preisProKm;
-    const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
+  const werkA = werke.find(w => w.firma === a.label);
+  const werkB = werke.find(w => w.firma === b.label);
+  const firmeneintrag = werkA || werkB;
 
-    // Spezial: Sägespäne-Kalkulation für Sägerestholz Nord
-    const saegEintrag = werke.find(w =>
-      (w.firma === a.label || w.firma === b.label) &&
-      w.productType === "saegerestholz" &&
-      (w.produkt || "").toLowerCase().includes("sägespäne")
-    );
+  const firmenPreis = firmeneintrag
+    ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
+    : 0;
 
-    let saegCalcHtml = "";
-    if (saegEintrag) {
-      const distKm = parseFloat(dist);
-      const grundpreisSrm = saegEintrag.preis;     // €/srm
-      const transportSrm = 2.5 * distKm;           // 2,5 €/srm * Entfernung
-      const sumVorZuschlag = grundpreisSrm + transportSrm;
-      const gesamtSrm = sumVorZuschlag * 1.05;     // +5 %
+  const distKm = parseFloat(dist);
+  const preisProKm = distKm < 250 ? 2.15 : 1.85;
+  const teilstrecke = distKm / 24;
+  const berechnung = teilstrecke * preisProKm;
+  const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
 
-      saegCalcHtml = `
-        <br><b>Kalkulation Sägespäne (€/srm)</b><br>
-        Grundpreis: ${grundpreisSrm.toFixed(2)} €/srm<br>
-        Transport: 2,50 €/srm * ${distKm.toFixed(1)} km = ${transportSrm.toFixed(2)} €/srm<br>
-        Zwischensumme: ${sumVorZuschlag.toFixed(2)} €/srm<br>
-        inkl. 5 %: <span style="font-weight:bold">${gesamtSrm.toFixed(2)} €/srm</span>
-      `;
-    }
+  // Sägespäne-Kalkulation für Sägerestholz Nord
+  function istSaegespaeneWerk(w){
+    if (!w) return false;
+    if (w.productType !== "saegerestholz") return false;
+    const txt = (w.produkt || "").toLowerCase().trim();
+    const txtNorm = txt.replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue");
+    return txt.includes("sägespäne") || txtNorm.includes("saegespaene");
+  }
 
-    if(routeLine) map.removeLayer(routeLine);
-    routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
-    const mid = coords[Math.floor(coords.length/2)];
-    L.popup().setLatLng(mid).setContent(`
-      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-      <b>Entfernung:</b> ${dist} km<br>
-      <b>Dauer:</b> ${durationStr}<br>
-      <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-      <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
-      <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
-      ${saegCalcHtml}
-    `).openOn(map);
-    map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
-  } else alert("Keine Route gefunden!");
+  const saegEintrag = istSaegespaeneWerk(werkA)
+    ? werkA
+    : (istSaegespaeneWerk(werkB) ? werkB : null);
+
+  let saegCalcHtml = "";
+  if (saegEintrag) {
+    const grundpreisSrm = saegEintrag.preis;      // €/srm
+    const transportSrm = 2.5 * distKm;            // 2,5 €/srm * Entfernung
+    const sumVorZuschlag = grundpreisSrm + transportSrm;
+    const gesamtSrm = sumVorZuschlag * 1.05;      // +5 %
+
+    saegCalcHtml = `
+      <br><b>Kalkulation Sägespäne (€/srm)</b><br>
+      Grundpreis: ${grundpreisSrm.toFixed(2)} €/srm<br>
+      Transport: 2,50 €/srm * ${distKm.toFixed(1)} km = ${transportSrm.toFixed(2)} €/srm<br>
+      Zwischensumme: ${sumVorZuschlag.toFixed(2)} €/srm<br>
+      inkl. 5 %: <span style="font-weight:bold">${gesamtSrm.toFixed(2)} €/srm</span>
+    `;
+  }
+
+  if(routeLine) map.removeLayer(routeLine);
+  routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
+  const mid = coords[Math.floor(coords.length/2)];
+  L.popup().setLatLng(mid).setContent(`
+    <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+    <b>Entfernung:</b> ${dist} km<br>
+    <b>Dauer:</b> ${durationStr}<br>
+    <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+    <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
+    <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
+    ${saegCalcHtml}
+  `).openOn(map);
+  map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
 }
 
 map.on('click', (e) => {
