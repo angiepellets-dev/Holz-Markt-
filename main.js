@@ -1,10 +1,8 @@
-// Karte initialisieren
 const map = L.map("map").setView([51, 11], 5);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   minZoom: 4, maxZoom: 10, attribution: "&copy; OpenStreetMap"
 }).addTo(map);
 
-// Farb-Logik für Preise
 function colorForPrice(p, keinPreis) {
   if (keinPreis) return "#9e9e9e";
   if (!p || p <= 0 || isNaN(p)) return "#9e9e9e";
@@ -13,7 +11,6 @@ function colorForPrice(p, keinPreis) {
   return "red";
 }
 
-// Geocoding-Cache
 const geoCache = JSON.parse(localStorage.getItem("geoCachePellets_EU") || "{}");
 async function geocode(q) {
   if (geoCache[q] && geoCache[q].country_code) {
@@ -39,7 +36,6 @@ async function geocode(q) {
   return null;
 }
 
-// Marker-Icons
 const blauesDreieck = L.divIcon({
   className: "custom-triangle",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -57,7 +53,6 @@ const lilaDreieck = L.divIcon({
   popupAnchor: [0,-20]
 });
 
-// hellgelbes Dreieck: Pellet-Werk mit Abnehmer=Sägerestholz
 const hellgelbesDreieck = L.divIcon({
   className: "custom-triangle-yellow",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -74,8 +69,6 @@ const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PH
 
 let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
 let avgPriceByCountry = {};
-
-// CSV -> Objekte
 function parseFirmenWithHeader(rows){
   const lc = (s)=>String(s||"").toLowerCase();
   const keys = Object.keys(rows[0]||{});
@@ -107,7 +100,6 @@ function parseFirmenWithHeader(rows){
     }));
 }
 
-// Daten laden
 async function ladeDaten() {
   const pelletsPromise = new Promise((resolve) => {
     Papa.parse(sheetUrlPellets, {
@@ -168,7 +160,7 @@ async function ladeDaten() {
                   preisSack: parseFloat(String(row[4]||"0").replace(",", ".")),
                   zert:  (row[6]||"").trim(),
                   sack:  "",
-                  produkt: (row[7]||"").trim(), // Spalte G laut dir
+                  produkt: (row[7]||"").trim(),
                   abnehmer: ""
                 }));
                 resolve(normalizePreise(daten2));
@@ -209,7 +201,8 @@ async function ladeDaten() {
     });
   });
 
-  const [pellets, saegerestholz, kundenDaten] = await Promise.all([pelletsPromise, saegPromise, kundenPromise]);
+  const [pellets, saegerestholz, kundenDaten] =
+    await Promise.all([pelletsPromise, saegPromise, kundenPromise]);
 
   const pelletsMitDataset = pellets.map(w => {
     const abn = (w.abnehmer || "").toLowerCase();
@@ -234,8 +227,6 @@ async function ladeDaten() {
   werke = [...pelletsMitDataset, ...saegMitDataset];
   kunden = kundenDaten;
 }
-
-// Preise normalisieren
 function normalizePreise(daten){
   const gültigeWerk = daten.filter(w => !isNaN(w.preis) && w.preis > 0);
   const gültigeSack = daten.filter(w => !isNaN(w.preisSack) && w.preisSack > 0);
@@ -319,7 +310,6 @@ function tooltipHtmlFromMarker(m){
   return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${abnTxt}${produktTxt}${unitTxt}${avgTxt}`;
 }
 
-// Events an Marker hängen
 function attachWerkInteractions(layer, w, c){
   layer
     .bindTooltip("", {sticky:true})
@@ -341,12 +331,10 @@ function attachWerkInteractions(layer, w, c){
     .on("click",()=>handleMarkerClick(w.firma,c));
 }
 
-// Karte aufbauen
 async function buildMap(){
   alleMarker = [];
   const bounds=L.latLngBounds();
 
-  // Werke
   for(const w of werke){
     const c=geoCache[w.ort] && geoCache[w.ort].country_code ? geoCache[w.ort] : await geocode(w.ort);
     if(!c)continue;
@@ -396,7 +384,6 @@ async function buildMap(){
     bounds.extend([c.lat,c.lon]);
   }
 
-  // Kunden
   for(const k of kunden){
     const c=geoCache[k.ort] && geoCache[k.ort].country_code ? geoCache[k.ort] : await geocode(k.ort);
     if(!c)continue;
@@ -423,7 +410,6 @@ async function buildMap(){
   updateLayers();
 }
 
-// Länder-Auswahl
 function getSelectedCountries() {
   const chks = document.querySelectorAll(".countryChk");
   const selected = [];
@@ -445,7 +431,6 @@ function updateCountryButtonLabel() {
   }
 }
 
-// Layer filtern
 function updateLayers(){
   alleMarker.forEach(m=>{
     if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker);
@@ -477,7 +462,6 @@ function updateLayers(){
   const showSaeg    = document.getElementById("chkSaegerestholzNord").checked;
 
   for(const m of alleMarker){
-    // Kunden
     if(m.type === "kunde"){
       if (kundenFlag && showPellets) {
         if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
@@ -495,10 +479,7 @@ function updateLayers(){
       continue;
     }
 
-    // Firmen
-    if (m.productType === "saegerestholz" && !showSaeg) {
-      continue;
-    }
+    if (m.productType === "saegerestholz" && !showSaeg) continue;
     if (m.productType === "pellets") {
       if (!showPellets && !(m.isSaegerAbnehmer && showSaeg)) continue;
     }
@@ -543,7 +524,6 @@ function updateLayers(){
 
     const isPelletSaegerest = m.source === "pellets" && m.isSaegerAbnehmer;
 
-    // gelbes Dreieck nur wenn Pellets aus, Sägerestholz an
     if (isPelletSaegerest && !showPellets && showSaeg && m.triangleMarker) {
       layerToUse = m.triangleMarker;
     }
@@ -557,13 +537,10 @@ function updateLayers(){
     }
 
     m.marker = layerToUse;
-    if (layerToUse) {
-      map.addLayer(layerToUse);
-    }
+    if (layerToUse) map.addLayer(layerToUse);
   }
 }
 
-// Routenwahl
 function handleMarkerClick(label,coord){
   selectedPoints.push({label,coord});
   if(selectedPoints.length===2){
@@ -573,7 +550,6 @@ function handleMarkerClick(label,coord){
   }
 }
 
-// ---------- Route + Kosten berechnen (mit Sägespäne-Formel) ----------
 async function showRoute(a,b){
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
@@ -584,9 +560,8 @@ async function showRoute(a,b){
   }
 
   const route = data.routes[0];
-  const distKm = route.distance / 1000;
-  const dist = distKm.toFixed(1);
-  const durationMin = route.duration / 60;
+  const dist = (route.distance/1000).toFixed(1);
+  const durationMin = route.duration/60;
   const hours = Math.floor(durationMin/60);
   const minutes = Math.round(durationMin%60);
   const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
@@ -598,48 +573,47 @@ async function showRoute(a,b){
   const werkB = werke.find(w => w.firma === b.label);
   const firmeneintrag = werkA || werkB;
 
-  // Standard-Pellet-Rechnung (LKW)
   const firmenPreis = firmeneintrag
     ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
     : 0;
 
+  const distKm = parseFloat(dist);
   const preisProKm = distKm < 250 ? 2.15 : 1.85;
   const teilstrecke = distKm / 24;
   const berechnung = teilstrecke * preisProKm;
-  const gesamtLkw = (berechnung + (firmenPreis||0)) * 1.05;
+  const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
 
-  // ---------- Sägespäne-Erkennung: Produkt genau "Sägespäne" in Spalte G ----------
-  let gesamtAnzeige = gesamtLkw;
+  function istSaegespaeneWerk(w){
+    if (!w) return false;
+    if (w.productType !== "saegerestholz") return false;
+    const txt = (w.produkt || "").toLowerCase().trim();
+    const txtNorm = txt.replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue");
+    return txt.includes("sägespäne") || txtNorm.includes("saegespaene");
+  }
+
+  const saegEintrag = istSaegespaeneWerk(werkA)
+    ? werkA
+    : (istSaegespaeneWerk(werkB) ? werkB : null);
+
   let saegCalcHtml = "";
+  if (saegEintrag) {
+    const basisPreisSrm = 20;
+    const ladungSrm = 85;
 
-  if (firmeneintrag && firmeneintrag.productType === "saegerestholz") {
-    const rawProd = (firmeneintrag.produkt || "").toLowerCase()
-      .normalize("NFD")
-      .replace(/\p{Diacritic}/gu,""); // ä -> a etc.
+    const grundpreisGesamt = basisPreisSrm * ladungSrm;
+    const transportTeil = 2.5 * distKm;
+    const sumVorZuschlag = grundpreisGesamt + transportTeil;
+    const sumMit5Prozent = sumVorZuschlag * 1.05;
+    const preisJeSrm = sumMit5Prozent / ladungSrm;
 
-    // "sägespäne" -> "sagespane"
-    if (rawProd.includes("sagespane")) {
-      const basisPreisSrm = firmeneintrag.preis;  // €/srm aus Spalte "preis"
-      const ladungSrm = 85;
-
-      // (Preis_srm * 85 + (2,5 €/srm * Entfernung_km)) * 1,05 / 85
-      const grundpreisGesamt = basisPreisSrm * ladungSrm;
-      const transportTeil = 2.5 * distKm;
-      const sumVorZuschlag = grundpreisGesamt + transportTeil;
-      const sumMit5Prozent = sumVorZuschlag * 1.05;
-      const preisJeSrm = sumMit5Prozent / ladungSrm;
-
-      gesamtAnzeige = preisJeSrm;  // **das** geht in "Gesamtkosten"
-
-      saegCalcHtml = `
-        <br><b>Kalkulation Sägespäne</b><br>
-        Basis: ${basisPreisSrm.toFixed(2)} €/srm * ${ladungSrm} = ${grundpreisGesamt.toFixed(2)} €<br>
-        Transport: 2,50 €/srm * ${distKm.toFixed(1)} km = ${transportTeil.toFixed(2)} €<br>
-        Zwischensumme: ${sumVorZuschlag.toFixed(2)} €<br>
-        inkl. 5 %: ${sumMit5Prozent.toFixed(2)} €<br>
-        <b>Ergebnis pro srm:</b> ${preisJeSrm.toFixed(2)} €
-      `;
-    }
+    saegCalcHtml = `
+      <br><b>Kalkulation Sägespäne (€/srm)</b><br>
+      Basis: ${basisPreisSrm.toFixed(2)} €/srm * ${ladungSrm} = ${grundpreisGesamt.toFixed(2)} €<br>
+      Transport: 2,50 €/srm * ${distKm.toFixed(1)} km = ${transportTeil.toFixed(2)} €<br>
+      Zwischensumme: ${sumVorZuschlag.toFixed(2)} €<br>
+      inkl. 5 %: ${sumMit5Prozent.toFixed(2)} €<br>
+      Ergebnis: <span style="font-weight:bold">${preisJeSrm.toFixed(2)} €/srm</span> (÷ ${ladungSrm})
+    `;
   }
 
   if(routeLine) map.removeLayer(routeLine);
@@ -651,13 +625,12 @@ async function showRoute(a,b){
     <b>Dauer:</b> ${durationStr}<br>
     <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
     <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
-    <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamtAnzeige.toFixed(2)} €</span>
+    <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
     ${saegCalcHtml}
   `).openOn(map);
   map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
 }
 
-// Route löschen bei Klick ins Leere
 map.on('click', (e) => {
   const t = e.originalEvent && e.originalEvent.target;
   if (t && t.closest) {
@@ -675,7 +648,6 @@ map.on('click', (e) => {
   map.closePopup();
 });
 
-// Checkbox-Events
 document.addEventListener("change", e => {
   if (e.target && e.target.matches('input[type="checkbox"]')) {
     if (e.target.classList.contains("countryChk")) {
@@ -693,7 +665,6 @@ document.addEventListener("change", e => {
   }
 });
 
-// Dropdown-Länder-Auswahl
 document.getElementById("countryDropdownBtn").addEventListener("click", () => {
   const menu = document.getElementById("countryDropdownMenu");
   menu.style.display = (menu.style.display === "block") ? "none" : "block";
@@ -706,7 +677,6 @@ document.addEventListener("click", (e) => {
   }
 });
 
-// Suchfeld
 document.getElementById("searchInput").addEventListener("keydown", e => {
   if(e.key === "Enter"){
     const query = e.target.value.toLowerCase().trim();
@@ -725,7 +695,6 @@ document.getElementById("searchInput").addEventListener("keydown", e => {
   }
 });
 
-// Start
 (async ()=>{
   await ladeDaten();
   await buildMap();
