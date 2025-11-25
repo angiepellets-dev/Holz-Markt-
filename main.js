@@ -599,17 +599,20 @@ async function showRoute(a,b){
     : (istSaegespaeneWerk(werkB) ? werkB : null);
 
   let saegCalcHtml = "";
+  let gesamtAnzeigeText = `${gesamt} €`;   // Standard: alte Gesamtkosten
+
   if (saegEintrag) {
-    // Basispreis kommt aus Sägerestholz-Nord-Tabelle (Spalte preis)
-    const basisPreisSrm = saegEintrag.preis || 20; // Fallback 20 €/srm
+    const basisPreisSrm = saegEintrag.preis || 20; // €/srm aus Tabelle
     const ladungSrm = 85;
 
-    // Deine Formel: (Preis_srm*85 + (2,5€/srm * Entfernung)) * 1,05 / 85
     const grundpreisGesamt = basisPreisSrm * ladungSrm;
     const transportTeil = 2.5 * distKm;
     const sumVorZuschlag = grundpreisGesamt + transportTeil;
     const sumMit5Prozent = sumVorZuschlag * 1.05;
     const preisJeSrm = sumMit5Prozent / ladungSrm;
+
+    // <-- HIER kommt jetzt dein Wert, z.B. 24,11 €/srm
+    gesamtAnzeigeText = `${preisJeSrm.toFixed(2)} €/srm`;
 
     saegCalcHtml = `
       <br><b>Kalkulation Sägespäne (€/srm)</b><br>
@@ -631,7 +634,7 @@ async function showRoute(a,b){
     <b>Dauer:</b> ${durationStr}<br>
     <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
     <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
-    <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
+    <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamtAnzeigeText}</span>
     ${saegCalcHtml}
   `).openOn(map);
   map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
