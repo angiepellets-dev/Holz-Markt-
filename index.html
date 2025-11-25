@@ -635,11 +635,9 @@ function updateLayers(){
 
     // Firmen
     if (m.productType === "saegerestholz" && !showSaeg) {
-      // reine Sägerestholz-Werke aus
       continue;
     }
     if (m.productType === "pellets") {
-      // Pellets aus, aber Pellet-Lieferant für Sägerestholz + Sägerestholz an => trotzdem zeigen
       if (!showPellets && !(m.isSaegerAbnehmer && showSaeg)) continue;
     }
 
@@ -760,17 +758,22 @@ async function showRoute(a,b){
 
   let saegCalcHtml = "";
   if (saegEintrag) {
-    const grundpreisSrm = saegEintrag.preis;      // €/srm
-    const transportSrm = 2.5 * distKm;            // 2,5 €/srm * Entfernung
-    const sumVorZuschlag = grundpreisSrm + transportSrm;
-    const gesamtSrm = sumVorZuschlag * 1.05;      // +5 %
+    const basisPreisSrm = 20;         // 20 €/srm
+    const ladungSrm = 85;            // 85 srm pro LKW
+
+    const grundpreisGesamt = basisPreisSrm * ladungSrm;   // 20 * 85
+    const transportTeil = 2.5 * distKm;                   // 2,5 €/srm * Entfernung
+    const sumVorZuschlag = grundpreisGesamt + transportTeil;
+    const sumMit5Prozent = sumVorZuschlag * 1.05;
+    const preisJeSrm = sumMit5Prozent / ladungSrm;
 
     saegCalcHtml = `
       <br><b>Kalkulation Sägespäne (€/srm)</b><br>
-      Grundpreis: ${grundpreisSrm.toFixed(2)} €/srm<br>
-      Transport: 2,50 €/srm * ${distKm.toFixed(1)} km = ${transportSrm.toFixed(2)} €/srm<br>
-      Zwischensumme: ${sumVorZuschlag.toFixed(2)} €/srm<br>
-      inkl. 5 %: <span style="font-weight:bold">${gesamtSrm.toFixed(2)} €/srm</span>
+      Basis: ${basisPreisSrm.toFixed(2)} €/srm * ${ladungSrm} = ${grundpreisGesamt.toFixed(2)} €<br>
+      Transport: 2,50 €/srm * ${distKm.toFixed(1)} km = ${transportTeil.toFixed(2)} €<br>
+      Zwischensumme: ${sumVorZuschlag.toFixed(2)} €<br>
+      inkl. 5 %: ${sumMit5Prozent.toFixed(2)} €<br>
+      Ergebnis: <span style="font-weight:bold">${preisJeSrm.toFixed(2)} €/srm</span> (÷ ${ladungSrm})
     `;
   }
 
