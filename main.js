@@ -608,11 +608,11 @@ async function showRoute(a,b){
 
     saegCalcHtml = `
       <br><b>Kalkulation Sägespäne (€/srm)</b><br>
-      Basis: ${basisPreisSrm.toFixed(2)} €/srm * ${ladungSrm} = ${grundpreisGesamt.toFixed(2)} €<br>
-      Transport: 2.15 €/km * ${distKm.toFixed(1)} km = ${transportTeil.toFixed(2)} €<br>
-      Zwischensumme: ${sumVorZuschlag.toFixed(2)} €<br>
-      inkl. 5 %: ${sumMit5Prozent.toFixed(2)} €<br>
-      Ergebnis: <span style="font-weight:bold">${preisJeSrm.toFixed(2)} €/srm</span> (÷ ${ladungSrm})
+      Basis: ${basisPreisSrm.toFixed(2)} * ${ladungSrm} = ${grundpreisGesamt.toFixed(2)} €<br>
+      Transport: 2.15 * ${distKm.toFixed(1)} = ${transportTeil.toFixed(2)} €<br>
+      Zwischensumme: ${sumVorZuschlag.toFixed(2)} <br>
+      inkl. 5 %: ${sumMit5Prozent.toFixed(2)} <br>
+      Ergebnis: <span style="font-weight:bold">${preisJeSrm.toFixed(2)} </span> (÷ ${ladungSrm})
     `;
   }
 
