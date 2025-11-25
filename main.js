@@ -597,11 +597,11 @@ async function showRoute(a,b){
 
   let saegCalcHtml = "";
   if (saegEintrag) {
-    const basisPreisSrm = 20;
+    const basisPreisSrm = 10;
     const ladungSrm = 85;
 
     const grundpreisGesamt = basisPreisSrm * ladungSrm;
-    const transportTeil = 2.5 * distKm;
+    const transportTeil = 2.15 * distKm;
     const sumVorZuschlag = grundpreisGesamt + transportTeil;
     const sumMit5Prozent = sumVorZuschlag * 1.05;
     const preisJeSrm = sumMit5Prozent / ladungSrm;
