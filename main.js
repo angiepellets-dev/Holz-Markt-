@@ -1,8 +1,10 @@
+// Karte initialisieren
 const map = L.map("map").setView([51, 11], 5);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
   minZoom: 4, maxZoom: 10, attribution: "&copy; OpenStreetMap"
 }).addTo(map);
 
+// Farb-Logik für Preise
 function colorForPrice(p, keinPreis) {
   if (keinPreis) return "#9e9e9e";
   if (!p || p <= 0 || isNaN(p)) return "#9e9e9e";
@@ -11,6 +13,7 @@ function colorForPrice(p, keinPreis) {
   return "red";
 }
 
+// Geocoding-Cache
 const geoCache = JSON.parse(localStorage.getItem("geoCachePellets_EU") || "{}");
 async function geocode(q) {
   if (geoCache[q] && geoCache[q].country_code) {
@@ -36,6 +39,7 @@ async function geocode(q) {
   return null;
 }
 
+// Marker-Icons
 const blauesDreieck = L.divIcon({
   className: "custom-triangle",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -52,7 +56,6 @@ const lilaDreieck = L.divIcon({
   iconAnchor: [12,22],
   popupAnchor: [0,-20]
 });
-
 const hellgelbesDreieck = L.divIcon({
   className: "custom-triangle-yellow",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -62,7 +65,7 @@ const hellgelbesDreieck = L.divIcon({
   popupAnchor: [0,-20]
 });
 
-/* Links */
+// Google-Sheets-URLs
 const sheetUrlPellets = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
 const sheetUrlSaegerestholz = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv&gid=1423782020";
 const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
@@ -70,6 +73,7 @@ const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PH
 let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
 let avgPriceByCountry = {};
 
+// CSV -> Objekte
 function parseFirmenWithHeader(rows){
   const lc = (s)=>String(s||"").toLowerCase();
   const keys = Object.keys(rows[0]||{});
@@ -101,6 +105,7 @@ function parseFirmenWithHeader(rows){
     }));
 }
 
+// Daten laden
 async function ladeDaten() {
   const pelletsPromise = new Promise((resolve) => {
     Papa.parse(sheetUrlPellets, {
@@ -161,7 +166,7 @@ async function ladeDaten() {
                   preisSack: parseFloat(String(row[4]||"0").replace(",", ".")),
                   zert:  (row[6]||"").trim(),
                   sack:  "",
-                  produkt: (row[7]||"").trim(), // Spalte H
+                  produkt: (row[7]||"").trim(),
                   abnehmer: ""
                 }));
                 resolve(normalizePreise(daten2));
@@ -228,6 +233,8 @@ async function ladeDaten() {
   werke = [...pelletsMitDataset, ...saegMitDataset];
   kunden = kundenDaten;
 }
+
+// Preise normalisieren
 function normalizePreise(daten){
   const gültigeWerk = daten.filter(w => !isNaN(w.preis) && w.preis > 0);
   const gültigeSack = daten.filter(w => !isNaN(w.preisSack) && w.preisSack > 0);
@@ -243,6 +250,7 @@ function normalizePreise(daten){
   });
 }
 
+// Hilfsfunktionen
 function sackFilterAktiv(){
   const wantFireflies = document.getElementById("chkSackFireflies").checked;
   const want15kg      = document.getElementById("chkSack15kg").checked;
@@ -268,6 +276,7 @@ function berechneDurchschnittProLand(){
   });
 }
 
+// Tooltip-Inhalt
 function tooltipHtmlFromMarker(m){
   const useSack = sackFilterAktiv();
   const showPellets = document.getElementById("chkPellets")?.checked ?? true;
@@ -311,6 +320,7 @@ function tooltipHtmlFromMarker(m){
   return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${abnTxt}${produktTxt}${unitTxt}${avgTxt}`;
 }
 
+// Events an Marker hängen
 function attachWerkInteractions(layer, w, c){
   layer
     .bindTooltip("", {sticky:true})
@@ -332,6 +342,7 @@ function attachWerkInteractions(layer, w, c){
     .on("click",()=>handleMarkerClick(w.firma,c));
 }
 
+// Karte aufbauen
 async function buildMap(){
   alleMarker = [];
   const bounds=L.latLngBounds();
@@ -413,6 +424,7 @@ async function buildMap(){
   updateLayers();
 }
 
+// Länder-Auswahl
 function getSelectedCountries() {
   const chks = document.querySelectorAll(".countryChk");
   const selected = [];
@@ -433,6 +445,8 @@ function updateCountryButtonLabel() {
     btn.textContent = selected.map(c => names[c] || c).join(", ");
   }
 }
+
+// Layer filtern
 function updateLayers(){
   alleMarker.forEach(m=>{
     if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker);
@@ -528,7 +542,6 @@ function updateLayers(){
 
     const isPelletSaegerest = m.source === "pellets" && m.isSaegerAbnehmer;
 
-    // gelbes Dreieck nur wenn Pellets aus, Sägerestholz an
     if (isPelletSaegerest && !showPellets && showSaeg && m.triangleMarker) {
       layerToUse = m.triangleMarker;
     }
@@ -548,6 +561,7 @@ function updateLayers(){
   }
 }
 
+// Routenwahl
 function handleMarkerClick(label,coord){
   selectedPoints.push({label,coord});
   if(selectedPoints.length===2){
@@ -557,6 +571,7 @@ function handleMarkerClick(label,coord){
   }
 }
 
+// Route + Kosten berechnen
 async function showRoute(a,b){
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
@@ -581,7 +596,7 @@ async function showRoute(a,b){
   const werkB = werke.find(w => w.firma === b.label);
   const firmeneintrag = werkA || werkB;
 
-  // Standard-Firmenpreis (Pellets)
+  // Standard-Pellet-Rechnung (LKW)
   const firmenPreis = firmeneintrag
     ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
     : 0;
@@ -591,7 +606,7 @@ async function showRoute(a,b){
   const berechnung = teilstrecke * preisProKm;
   const gesamtLkw = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
 
-  // ---------- Sägespäne-Kalkulation für Sägerestholz Nord ----------
+  // ---------- Sägespäne-Kalkulation ----------
   function istSaegespaeneWerk(w){
     if (!w) return false;
     if (w.productType !== "saegerestholz") return false;
@@ -605,21 +620,21 @@ async function showRoute(a,b){
     : (istSaegespaeneWerk(werkB) ? werkB : null);
 
   let saegCalcHtml = "";
-  let gesamtAnzeigeText = `${gesamtLkw} €`;   // Standard: alte LKW-Gesamtkosten
+  let gesamtAnzeigeText = `${gesamtLkw} €`;   // Standard: LKW-Gesamt
 
   if (saegEintrag) {
-    // Basispreis kommt aus Tabellenblatt „Sägerestholz Nord“, Spalte preis
+    // Preis aus Tabellenblatt "Sägerestholz Nord", Spalte "preis"
     const basisPreisSrm = saegEintrag.preis || 20; // €/srm
     const ladungSrm = 85;
 
-    // Deine Formel: (Preis_srm*85 + (2,5€/srm * Entfernung)) * 1,05 / 85
+    // Formel: (Preis_srm*85 + (2,5€/srm * Entfernung_km)) * 1,05 / 85
     const grundpreisGesamt = basisPreisSrm * ladungSrm;
     const transportTeil = 2.5 * distKm;
     const sumVorZuschlag = grundpreisGesamt + transportTeil;
     const sumMit5Prozent = sumVorZuschlag * 1.05;
     const preisJeSrm = sumMit5Prozent / ladungSrm;
 
-    // ► HIER überschreiben wir die Gesamtkosten-Anzeige
+    // In "Gesamtkosten" soll dieser Wert stehen
     gesamtAnzeigeText = `${preisJeSrm.toFixed(2)} €`;
 
     saegCalcHtml = `
@@ -631,7 +646,7 @@ async function showRoute(a,b){
       <b>Preis Sägespäne:</b> <span style="font-weight:bold">${preisJeSrm.toFixed(2)} €/srm</span> (÷ ${ladungSrm})
     `;
   }
-  // ---------------------------------------------------------------
+  // -------------------------------------------
 
   if(routeLine) map.removeLayer(routeLine);
   routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
@@ -648,6 +663,7 @@ async function showRoute(a,b){
   map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
 }
 
+// Route löschen bei Klick ins Leere
 map.on('click', (e) => {
   const t = e.originalEvent && e.originalEvent.target;
   if (t && t.closest) {
@@ -665,6 +681,7 @@ map.on('click', (e) => {
   map.closePopup();
 });
 
+// Checkbox-Events
 document.addEventListener("change", e => {
   if (e.target && e.target.matches('input[type="checkbox"]')) {
     if (e.target.classList.contains("countryChk")) {
@@ -682,6 +699,7 @@ document.addEventListener("change", e => {
   }
 });
 
+// Dropdown-Länder-Auswahl
 document.getElementById("countryDropdownBtn").addEventListener("click", () => {
   const menu = document.getElementById("countryDropdownMenu");
   menu.style.display = (menu.style.display === "block") ? "none" : "block";
@@ -694,6 +712,7 @@ document.addEventListener("click", (e) => {
   }
 });
 
+// Suchfeld
 document.getElementById("searchInput").addEventListener("keydown", e => {
   if(e.key === "Enter"){
     const query = e.target.value.toLowerCase().trim();
@@ -712,6 +731,7 @@ document.getElementById("searchInput").addEventListener("keydown", e => {
   }
 });
 
+// Start
 (async ()=>{
   await ladeDaten();
   await buildMap();
