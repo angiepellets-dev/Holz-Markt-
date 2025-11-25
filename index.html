@@ -201,7 +201,7 @@ const lilaDreieck = L.divIcon({
   popupAnchor: [0,-20]
 });
 
-// HELLGELBES Dreieck für "Abnehmer = Sägerestholz" aus Pellet-Tabelle
+// hellgelbes Dreieck (Pellet-Werk mit Abnehmer Sägerestholz)
 const hellgelbesDreieck = L.divIcon({
   className: "custom-triangle-yellow",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -358,7 +358,9 @@ async function ladeDaten() {
     const istSaegerest = abn.includes("sägerestholz") || abn.includes("saegerestholz");
     return {
       ...w,
-      dataset: istSaegerest ? "saegerestholz" : "pellets",
+      dataset: "pellets",          // bleibt Pellets
+      productType: "pellets",
+      isSaegerAbnehmer: istSaegerest,
       source: "pellets"
     };
   });
@@ -366,6 +368,8 @@ async function ladeDaten() {
   const saegMitDataset = saegerestholz.map(w => ({
     ...w,
     dataset: "saegerestholz",
+    productType: "saegerestholz",
+    isSaegerAbnehmer: false,
     source: "saegblatt"
   }));
 
@@ -417,17 +421,14 @@ function tooltipHtmlFromMarker(m){
   const useSack = sackFilterAktiv();
   const showPellets = document.getElementById("chkPellets")?.checked ?? true;
 
+  const isPelletSaegerAbnehmer =
+    m.source === "pellets" && m.isSaegerAbnehmer;
+
   let preisNow = useSack && isFinite(m.preisSack) && m.preisSack > 0 ? m.preisSack : m.preis;
 
-  // Gelbe Dreiecke (Abnehmer Sägerestholz, aus Pellet-Tabelle) sollen keine Preise anzeigen,
-  // wenn Pellets abgewählt sind
-  const isPelletSaegerestAbnehmer =
-    m.source === "pellets" &&
-    m.dataset === "saegerestholz" &&
-    (m.abnehmer || "").toLowerCase().includes("sägerestholz");
-
+  // bei gelbem Dreieck & Pellets aus -> kein Preis
   let preisTxt = "–";
-  if (!( !showPellets && isPelletSaegerestAbnehmer )) {
+  if (!( !showPellets && isPelletSaegerAbnehmer )) {
     preisTxt = (isFinite(preisNow) && preisNow > 0) ? `${preisNow.toFixed(2)} €` : "–";
   }
 
@@ -443,16 +444,20 @@ function tooltipHtmlFromMarker(m){
   let produktTxt = "";
   let unitTxt = "";
 
-  if (m.dataset === "pellets") {
-    produktTxt = "<br><b>Produkt:</b> Pellets";
-  } else if (m.dataset === "saegerestholz") {
+  if (m.dataset === "saegerestholz") {
     unitTxt = "<br><b>Unit:</b> Sägerestholz Nord";
-    if (m.produkt) {
-      unitTxt += ` – ${m.produkt}`;
+    if (m.produkt) unitTxt += ` – ${m.produkt}`;
+  } else if (m.dataset === "pellets") {
+    if (isPelletSaegerAbnehmer) {
+      // Pellet-Lieferant für Sägerestholz => Unit Pellets, kein Abnehmer angezeigt
+      unitTxt = "<br><b>Unit:</b> Pellets";
+    } else {
+      produktTxt = "<br><b>Produkt:</b> Pellets";
     }
   }
 
-  const abnTxt = m.abnehmer ? `<br><b>Abnehmer:</b> ${m.abnehmer}` : "";
+  const abnTxt = (!isPelletSaegerAbnehmer && m.abnehmer)
+    ? `<br><b>Abnehmer:</b> ${m.abnehmer}` : "";
 
   return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${abnTxt}${produktTxt}${unitTxt}${avgTxt}`;
 }
@@ -469,6 +474,8 @@ function attachWerkInteractions(layer, w, c){
         abnehmer:(w.abnehmer||""),
         produkt:(w.produkt||""),
         dataset:w.dataset,
+        productType:w.productType,
+        isSaegerAbnehmer:w.isSaegerAbnehmer,
         source:w.source,
         country_code: (c.country_code || "")
       }));
@@ -497,10 +504,7 @@ async function buildMap(){
     attachWerkInteractions(circleMarker, w, c);
 
     let triangleMarker = null;
-    const abn = (w.abnehmer || "").toLowerCase();
-    const isPelletSaegerest = (w.source === "pellets") &&
-                              (w.dataset === "saegerestholz") &&
-                              (abn.includes("sägerestholz") || abn.includes("saegerestholz"));
+    const isPelletSaegerest = w.source === "pellets" && w.isSaegerAbnehmer;
 
     if (isPelletSaegerest) {
       triangleMarker = L.marker([c.lat,c.lon], {icon: hellgelbesDreieck});
@@ -526,6 +530,8 @@ async function buildMap(){
       produkt:(w.produkt||""),
       country_code: (c.country_code || ""),
       dataset: w.dataset,
+      productType: w.productType,
+      isSaegerAbnehmer: w.isSaegerAbnehmer,
       source: w.source
     });
     bounds.extend([c.lat,c.lon]);
@@ -610,7 +616,7 @@ function updateLayers(){
   const showSaeg    = document.getElementById("chkSaegerestholzNord").checked;
 
   for(const m of alleMarker){
-    // Kunden
+    // Kunden (bleiben an Pellets-Produkt gekoppelt)
     if(m.type === "kunde"){
       if (kundenFlag && showPellets) {
         if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
@@ -629,8 +635,14 @@ function updateLayers(){
     }
 
     // Firmen
-    if (m.dataset === "pellets" && !showPellets) continue;
-    if (m.dataset === "saegerestholz" && !showSaeg) continue;
+    if (m.productType === "saegerestholz" && !showSaeg) {
+      // reine Sägerestholz-Werke aus
+      continue;
+    }
+    if (m.productType === "pellets") {
+      // Pellets aus, aber Pellets-Lieferant für Sägerestholz + Saegerestholz an => trotzdem anzeigen
+      if (!showPellets && !(m.isSaegerAbnehmer && showSaeg)) continue;
+    }
 
     if (useSack) {
       const sNorm = (m.sack||"").toLowerCase().replace(/\s+/g,' ').trim();
@@ -670,12 +682,10 @@ function updateLayers(){
 
     let layerToUse = m.circleMarker || m.marker;
 
-    const abn = (m.abnehmer || "").toLowerCase();
-    const isPelletSaegerest = (m.source === "pellets") &&
-                              (m.dataset === "saegerestholz") &&
-                              (abn.includes("sägerestholz") || abn.includes("saegerestholz"));
+    const isPelletSaegerest = m.source === "pellets" && m.isSaegerAbnehmer;
 
-    if (isPelletSaegerest && !showPellets && m.triangleMarker) {
+    // gelbes Dreieck nur wenn Pellets aus, Sägerestholz an
+    if (isPelletSaegerest && !showPellets && showSaeg && m.triangleMarker) {
       layerToUse = m.triangleMarker;
     }
 
@@ -728,20 +738,20 @@ async function showRoute(a,b){
     const berechnung = teilstrecke * preisProKm;
     const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
 
-    // Spezielle Kalkulation für Produkt "Sägespäne" bei Sägerestholz Nord
+    // Spezial: Sägespäne-Kalkulation für Sägerestholz Nord
     const saegEintrag = werke.find(w =>
       (w.firma === a.label || w.firma === b.label) &&
-      w.dataset === "saegerestholz" &&
+      w.productType === "saegerestholz" &&
       (w.produkt || "").toLowerCase().includes("sägespäne")
     );
 
     let saegCalcHtml = "";
     if (saegEintrag) {
       const distKm = parseFloat(dist);
-      const grundpreisSrm = saegEintrag.preis; // angenommen €/srm
-      const transportSrm = 2.5 * distKm;       // 2,5 €/srm * Entfernung
+      const grundpreisSrm = saegEintrag.preis;     // €/srm
+      const transportSrm = 2.5 * distKm;           // 2,5 €/srm * Entfernung
       const sumVorZuschlag = grundpreisSrm + transportSrm;
-      const gesamtSrm = sumVorZuschlag * 1.05; // +5%
+      const gesamtSrm = sumVorZuschlag * 1.05;     // +5 %
 
       saegCalcHtml = `
         <br><b>Kalkulation Sägespäne (€/srm)</b><br>
