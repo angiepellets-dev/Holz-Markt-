@@ -762,9 +762,9 @@ async function showRoute(a,b){
     const ladungSrm = 85;            // 85 srm pro LKW
 
     const grundpreisGesamt = basisPreisSrm * ladungSrm;   // 20 * 85
-    const transportTeil = 2.5 * distKm;                   // 2,5 €/srm * Entfernung
+    const transportTeil = 2,50 * distKm;                   // 2,5 €/srm * Entfernung
     const sumVorZuschlag = grundpreisGesamt + transportTeil;
-    const sumMit5Prozent = sumVorZuschlag * 1.05;
+    const sumMit5Prozent = sumVorZuschlag * 1,05;
     const preisJeSrm = sumMit5Prozent / ladungSrm;
 
     saegCalcHtml = `
