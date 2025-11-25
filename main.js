@@ -464,6 +464,7 @@ function updateLayers(){
   const showSaeg    = document.getElementById("chkSaegerestholzNord").checked;
 
   for(const m of alleMarker){
+    // Kunden
     if(m.type === "kunde"){
       if (kundenFlag && showPellets) {
         if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
@@ -481,6 +482,7 @@ function updateLayers(){
       continue;
     }
 
+    // Firmen
     if (m.productType === "saegerestholz" && !showSaeg) continue;
     if (m.productType === "pellets") {
       if (!showPellets && !(m.isSaegerAbnehmer && showSaeg)) continue;
@@ -526,6 +528,7 @@ function updateLayers(){
 
     const isPelletSaegerest = m.source === "pellets" && m.isSaegerAbnehmer;
 
+    // gelbes Dreieck nur wenn Pellets aus, Sägerestholz an
     if (isPelletSaegerest && !showPellets && showSaeg && m.triangleMarker) {
       layerToUse = m.triangleMarker;
     }
@@ -539,7 +542,9 @@ function updateLayers(){
     }
 
     m.marker = layerToUse;
-    if (layerToUse) map.addLayer(layerToUse);
+    if (layerToUse) {
+      map.addLayer(layerToUse);
+    }
   }
 }
 
@@ -562,8 +567,8 @@ async function showRoute(a,b){
   }
 
   const route = data.routes[0];
-  const dist = (route.distance/1000).toFixed(1);   // km (String)
-  const distKm = parseFloat(dist);
+  const dist = (route.distance/1000).toFixed(1);   // km als String
+  const distKm = parseFloat(dist);                 // km als Zahl
   const durationMin = route.duration/60;
   const hours = Math.floor(durationMin/60);
   const minutes = Math.round(durationMin%60);
@@ -576,6 +581,7 @@ async function showRoute(a,b){
   const werkB = werke.find(w => w.firma === b.label);
   const firmeneintrag = werkA || werkB;
 
+  // Standard-Firmenpreis (Pellets)
   const firmenPreis = firmeneintrag
     ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
     : 0;
@@ -583,7 +589,7 @@ async function showRoute(a,b){
   const preisProKm = distKm < 250 ? 2.15 : 1.85;
   const teilstrecke = distKm / 24;
   const berechnung = teilstrecke * preisProKm;
-  const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
+  const gesamtLkw = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
 
   // ---------- Sägespäne-Kalkulation für Sägerestholz Nord ----------
   function istSaegespaeneWerk(w){
@@ -599,28 +605,30 @@ async function showRoute(a,b){
     : (istSaegespaeneWerk(werkB) ? werkB : null);
 
   let saegCalcHtml = "";
-  let gesamtAnzeigeText = `${gesamt} €`;   // Standard: alte Gesamtkosten
+  let gesamtAnzeigeText = `${gesamtLkw} €`;   // Standard: alte LKW-Gesamtkosten
 
   if (saegEintrag) {
-    const basisPreisSrm = saegEintrag.preis || 20; // €/srm aus Tabelle
+    // Basispreis kommt aus Tabellenblatt „Sägerestholz Nord“, Spalte preis
+    const basisPreisSrm = saegEintrag.preis || 20; // €/srm
     const ladungSrm = 85;
 
+    // Deine Formel: (Preis_srm*85 + (2,5€/srm * Entfernung)) * 1,05 / 85
     const grundpreisGesamt = basisPreisSrm * ladungSrm;
     const transportTeil = 2.5 * distKm;
     const sumVorZuschlag = grundpreisGesamt + transportTeil;
     const sumMit5Prozent = sumVorZuschlag * 1.05;
     const preisJeSrm = sumMit5Prozent / ladungSrm;
 
-    // <-- HIER kommt jetzt dein Wert, z.B. 24,11 €/srm
-    gesamtAnzeigeText = `${preisJeSrm.toFixed(2)} €/srm`;
+    // ► HIER überschreiben wir die Gesamtkosten-Anzeige
+    gesamtAnzeigeText = `${preisJeSrm.toFixed(2)} €`;
 
     saegCalcHtml = `
-      <br><b>Kalkulation Sägespäne (€/srm)</b><br>
+      <br><b>Kalkulation Sägespäne</b><br>
       Basis: ${basisPreisSrm.toFixed(2)} €/srm * ${ladungSrm} = ${grundpreisGesamt.toFixed(2)} €<br>
       Transport: 2,50 €/srm * ${distKm.toFixed(1)} km = ${transportTeil.toFixed(2)} €<br>
       Zwischensumme: ${sumVorZuschlag.toFixed(2)} €<br>
       inkl. 5 %: ${sumMit5Prozent.toFixed(2)} €<br>
-      Ergebnis: <span style="font-weight:bold">${preisJeSrm.toFixed(2)} €/srm</span> (÷ ${ladungSrm})
+      <b>Preis Sägespäne:</b> <span style="font-weight:bold">${preisJeSrm.toFixed(2)} €/srm</span> (÷ ${ladungSrm})
     `;
   }
   // ---------------------------------------------------------------
