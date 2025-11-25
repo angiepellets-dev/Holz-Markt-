@@ -69,6 +69,7 @@ const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PH
 
 let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
 let avgPriceByCountry = {};
+
 function parseFirmenWithHeader(rows){
   const lc = (s)=>String(s||"").toLowerCase();
   const keys = Object.keys(rows[0]||{});
@@ -160,7 +161,7 @@ async function ladeDaten() {
                   preisSack: parseFloat(String(row[4]||"0").replace(",", ".")),
                   zert:  (row[6]||"").trim(),
                   sack:  "",
-                  produkt: (row[7]||"").trim(),
+                  produkt: (row[7]||"").trim(), // Spalte H
                   abnehmer: ""
                 }));
                 resolve(normalizePreise(daten2));
@@ -335,6 +336,7 @@ async function buildMap(){
   alleMarker = [];
   const bounds=L.latLngBounds();
 
+  // Werke
   for(const w of werke){
     const c=geoCache[w.ort] && geoCache[w.ort].country_code ? geoCache[w.ort] : await geocode(w.ort);
     if(!c)continue;
@@ -384,6 +386,7 @@ async function buildMap(){
     bounds.extend([c.lat,c.lon]);
   }
 
+  // Kunden
   for(const k of kunden){
     const c=geoCache[k.ort] && geoCache[k.ort].country_code ? geoCache[k.ort] : await geocode(k.ort);
     if(!c)continue;
@@ -430,7 +433,6 @@ function updateCountryButtonLabel() {
     btn.textContent = selected.map(c => names[c] || c).join(", ");
   }
 }
-
 function updateLayers(){
   alleMarker.forEach(m=>{
     if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker);
@@ -560,7 +562,8 @@ async function showRoute(a,b){
   }
 
   const route = data.routes[0];
-  const dist = (route.distance/1000).toFixed(1);
+  const dist = (route.distance/1000).toFixed(1);   // km (String)
+  const distKm = parseFloat(dist);
   const durationMin = route.duration/60;
   const hours = Math.floor(durationMin/60);
   const minutes = Math.round(durationMin%60);
@@ -577,12 +580,12 @@ async function showRoute(a,b){
     ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
     : 0;
 
-  const distKm = parseFloat(dist);
   const preisProKm = distKm < 250 ? 2.15 : 1.85;
   const teilstrecke = distKm / 24;
   const berechnung = teilstrecke * preisProKm;
   const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
 
+  // ---------- Sägespäne-Kalkulation für Sägerestholz Nord ----------
   function istSaegespaeneWerk(w){
     if (!w) return false;
     if (w.productType !== "saegerestholz") return false;
@@ -597,9 +600,11 @@ async function showRoute(a,b){
 
   let saegCalcHtml = "";
   if (saegEintrag) {
-    const basisPreisSrm = 20;
+    // Basispreis kommt aus Sägerestholz-Nord-Tabelle (Spalte preis)
+    const basisPreisSrm = saegEintrag.preis || 20; // Fallback 20 €/srm
     const ladungSrm = 85;
 
+    // Deine Formel: (Preis_srm*85 + (2,5€/srm * Entfernung)) * 1,05 / 85
     const grundpreisGesamt = basisPreisSrm * ladungSrm;
     const transportTeil = 2.5 * distKm;
     const sumVorZuschlag = grundpreisGesamt + transportTeil;
@@ -615,6 +620,7 @@ async function showRoute(a,b){
       Ergebnis: <span style="font-weight:bold">${preisJeSrm.toFixed(2)} €/srm</span> (÷ ${ladungSrm})
     `;
   }
+  // ---------------------------------------------------------------
 
   if(routeLine) map.removeLayer(routeLine);
   routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
