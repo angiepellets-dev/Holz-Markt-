@@ -116,7 +116,7 @@
   </div>
 </div>
 
-<!-- Zertifikate + Sackware + Datenquellen -->
+<!-- Zertifikate + Sackware + Produkt -->
 <div class="cert-box">
   <b>Zertifikate & Sackware</b><br>
   <label><input type="checkbox" id="chkEnPlus" checked> EnPlus</label><br>
@@ -129,7 +129,7 @@
   <label><input type="checkbox" id="chkSackFireflies"> FireFlies</label><br>
   <label><input type="checkbox" id="chkSack15kg"> 15 kg</label>
   <hr>
-  <b>Datenquelle</b><br>
+  <b>Produkt</b><br>
   <label><input type="checkbox" id="chkPellets" checked> Pellets</label><br>
   <label><input type="checkbox" id="chkSaegerestholzNord" checked> Sägerestholz Nord</label>
 </div>
@@ -428,7 +428,7 @@ function tooltipHtmlFromMarker(m){
   }
 
   let dsTxt = "";
-  if (m.dataset === "pellets") dsTxt = "<br><b>Datenquelle:</b> Pellets";
+  if (m.dataset === "pellets") dsTxt = "<br><b>Produkt:</b> Pellets";
   if (m.dataset === "saegerestholz") dsTxt = "<br><b>Produkt:</b> Sägerestholz Nord";
 
   const abnTxt = m.abnehmer ? `<br><b>Abnehmer:</b> ${m.abnehmer}` : "";
@@ -609,7 +609,7 @@ function updateLayers(){
     }
 
     // Firmen
-    // Dataset-Filter: Pellet vs Sägerestholz Nord
+    // Produkt-Filter: Pellets vs Sägerestholz Nord
     if (m.dataset === "pellets" && !showPellets) continue;
     if (m.dataset === "saegerestholz" && !showSaeg) continue;
 
