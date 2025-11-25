@@ -211,7 +211,7 @@ const hellgelbesDreieck = L.divIcon({
   popupAnchor: [0,-20]
 });
 
-/* Deine Links */
+/* Links */
 const sheetUrlPellets = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
 const sheetUrlSaegerestholz = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv&gid=1423782020";
 const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
@@ -234,8 +234,6 @@ function parseFirmenWithHeader(rows){
   const sackKey = findKey(["sackware","sack","bag","bagged"]);
 
   const produktKey = findKey(["produkt","produkte","product","products"]);
-
-  // Abnehmer-Spalte
   const abnehmerKey = findKey(["abnehmer","kunde","kunden","buyer","customer"]);
 
   return rows
@@ -275,7 +273,7 @@ async function ladeDaten() {
                   zert:  (row[6]||"").trim(),
                   sack:  (row[7]||"").trim(),
                   produkt: "",
-                  abnehmer: ""    // Fallback ohne Header
+                  abnehmer: ""
                 }));
                 resolve(normalizePreise(daten2));
               }
@@ -311,8 +309,8 @@ async function ladeDaten() {
                   preis: parseFloat(String(row[2]||"0").replace(",", ".")),
                   preisSack: parseFloat(String(row[4]||"0").replace(",", ".")),
                   zert:  (row[6]||"").trim(),
-                  sack:  "",                       // falls andere Struktur
-                  produkt: (row[7]||"").trim(),    // Spalte H = Produkte
+                  sack:  "",
+                  produkt: (row[7]||"").trim(), // Spalte H = Produkte
                   abnehmer: ""
                 }));
                 resolve(normalizePreise(daten2));
@@ -355,9 +353,6 @@ async function ladeDaten() {
 
   const [pellets, saegerestholz, kundenDaten] = await Promise.all([pelletsPromise, saegPromise, kundenPromise]);
 
-  // Pellet-Firmen nach Abnehmer klassifizieren:
-  // - Abnehmer enthält "Sägerestholz" -> dataset: "saegerestholz" (gehört zum Filter Sägerestholz Nord)
-  // - sonst -> dataset: "pellets"
   const pelletsMitDataset = pellets.map(w => {
     const abn = (w.abnehmer || "").toLowerCase();
     const istSaegerest = abn.includes("sägerestholz") || abn.includes("saegerestholz");
@@ -368,7 +363,6 @@ async function ladeDaten() {
     };
   });
 
-  // Sägerestholz-Blatt: immer dataset saegerestholz, aber bleibt Kreis (source unterscheidet das)
   const saegMitDataset = saegerestholz.map(w => ({
     ...w,
     dataset: "saegerestholz",
@@ -421,8 +415,22 @@ function berechneDurchschnittProLand(){
 
 function tooltipHtmlFromMarker(m){
   const useSack = sackFilterAktiv();
-  const preisNow = useSack && isFinite(m.preisSack) && m.preisSack > 0 ? m.preisSack : m.preis;
-  const preisTxt = isFinite(preisNow) && preisNow > 0 ? `${preisNow.toFixed(2)} €` : "–";
+  const showPellets = document.getElementById("chkPellets")?.checked ?? true;
+
+  let preisNow = useSack && isFinite(m.preisSack) && m.preisSack > 0 ? m.preisSack : m.preis;
+
+  // Gelbe Dreiecke (Abnehmer Sägerestholz, aus Pellet-Tabelle) sollen keine Preise anzeigen,
+  // wenn Pellets abgewählt sind
+  const isPelletSaegerestAbnehmer =
+    m.source === "pellets" &&
+    m.dataset === "saegerestholz" &&
+    (m.abnehmer || "").toLowerCase().includes("sägerestholz");
+
+  let preisTxt = "–";
+  if (!( !showPellets && isPelletSaegerestAbnehmer )) {
+    preisTxt = (isFinite(preisNow) && preisNow > 0) ? `${preisNow.toFixed(2)} €` : "–";
+  }
+
   const zertInfo = m.zert ? `<br><b>Zertifikat:</b> ${m.zert}` : "";
   const sackInfo = m.sack ? `<br><b>Sackware:</b> ${m.sack}` : "";
 
@@ -449,7 +457,6 @@ function tooltipHtmlFromMarker(m){
   return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}${abnTxt}${produktTxt}${unitTxt}${avgTxt}`;
 }
 
-// Helper zum Anhängen von Tooltip & Klick auf einen Marker
 function attachWerkInteractions(layer, w, c){
   layer
     .bindTooltip("", {sticky:true})
@@ -462,6 +469,7 @@ function attachWerkInteractions(layer, w, c){
         abnehmer:(w.abnehmer||""),
         produkt:(w.produkt||""),
         dataset:w.dataset,
+        source:w.source,
         country_code: (c.country_code || "")
       }));
     })
@@ -479,7 +487,6 @@ async function buildMap(){
 
     const farbeInit = sackFilterAktiv() ? w.farbeSack : w.farbeWerk;
 
-    // Standard: Kreis-Marker
     const circleMarker = L.circleMarker([c.lat,c.lon],{
       radius:8,
       color:farbeInit,
@@ -489,7 +496,6 @@ async function buildMap(){
 
     attachWerkInteractions(circleMarker, w, c);
 
-    // Dreieck NUR für Pellet-Tabelle + Abnehmer=Sägerestholz
     let triangleMarker = null;
     const abn = (w.abnehmer || "").toLowerCase();
     const isPelletSaegerest = (w.source === "pellets") &&
@@ -503,7 +509,7 @@ async function buildMap(){
 
     alleMarker.push({
       type:"firma",
-      marker: circleMarker,      // Standard-Referenz, wird in updateLayers umgeschaltet
+      marker: circleMarker,
       circleMarker,
       triangleMarker,
       firma:w.firma,
@@ -525,7 +531,7 @@ async function buildMap(){
     bounds.extend([c.lat,c.lon]);
   }
 
-  // Kunden (Pellet-Kunden)
+  // Kunden
   for(const k of kunden){
     const c=geoCache[k.ort] && geoCache[k.ort].country_code ? geoCache[k.ort] : await geocode(k.ort);
     if(!c)continue;
@@ -574,7 +580,6 @@ function updateCountryButtonLabel() {
 }
 
 function updateLayers(){
-  // alle alten Marker entfernen (Kreise + Dreiecke)
   alleMarker.forEach(m=>{
     if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker);
     if (m.circleMarker && map.hasLayer(m.circleMarker)) map.removeLayer(m.circleMarker);
@@ -624,7 +629,6 @@ function updateLayers(){
     }
 
     // Firmen
-    // Produkt-Filter: Pellets vs Sägerestholz Nord
     if (m.dataset === "pellets" && !showPellets) continue;
     if (m.dataset === "saegerestholz" && !showSaeg) continue;
 
@@ -664,7 +668,6 @@ function updateLayers(){
       if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
     }
 
-    // Entscheiden: Kreis oder hellgelbes Dreieck?
     let layerToUse = m.circleMarker || m.marker;
 
     const abn = (m.abnehmer || "").toLowerCase();
@@ -672,25 +675,19 @@ function updateLayers(){
                               (m.dataset === "saegerestholz") &&
                               (abn.includes("sägerestholz") || abn.includes("saegerestholz"));
 
-    // Dreieck NUR wenn:
-    // - Firma kommt aus Pellet-Tabelle (source=pellets)
-    // - Abnehmer=Sägerestholz (dataset=saegerestholz)
-    // - UND Pellets-Checkbox ist AUS
     if (isPelletSaegerest && !showPellets && m.triangleMarker) {
       layerToUse = m.triangleMarker;
     }
 
-    // Style nur auf Kreise anwenden
     if (layerToUse && layerToUse.setStyle) {
       layerToUse.setStyle({color:aktiveFarbe, fillColor:aktiveFarbe});
     }
 
-    // Tooltip ggf. aktualisieren
     if (layerToUse && layerToUse.getTooltip) {
       layerToUse.getTooltip().setContent( tooltipHtmlFromMarker(m) );
     }
 
-    m.marker = layerToUse; // für Suche & spätere Entfernung
+    m.marker = layerToUse;
     if (layerToUse) {
       map.addLayer(layerToUse);
     }
@@ -721,6 +718,7 @@ async function showRoute(a,b){
 
     const useSack = sackFilterAktiv();
     const firmeneintrag = werke.find(w => w.firma === a.label || w.firma === b.label);
+
     const firmenPreis = firmeneintrag
       ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
       : 0;
@@ -729,6 +727,30 @@ async function showRoute(a,b){
     const teilstrecke = parseFloat(dist) / 24;
     const berechnung = teilstrecke * preisProKm;
     const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
+
+    // Spezielle Kalkulation für Produkt "Sägespäne" bei Sägerestholz Nord
+    const saegEintrag = werke.find(w =>
+      (w.firma === a.label || w.firma === b.label) &&
+      w.dataset === "saegerestholz" &&
+      (w.produkt || "").toLowerCase().includes("sägespäne")
+    );
+
+    let saegCalcHtml = "";
+    if (saegEintrag) {
+      const distKm = parseFloat(dist);
+      const grundpreisSrm = saegEintrag.preis; // angenommen €/srm
+      const transportSrm = 2.5 * distKm;       // 2,5 €/srm * Entfernung
+      const sumVorZuschlag = grundpreisSrm + transportSrm;
+      const gesamtSrm = sumVorZuschlag * 1.05; // +5%
+
+      saegCalcHtml = `
+        <br><b>Kalkulation Sägespäne (€/srm)</b><br>
+        Grundpreis: ${grundpreisSrm.toFixed(2)} €/srm<br>
+        Transport: 2,50 €/srm * ${distKm.toFixed(1)} km = ${transportSrm.toFixed(2)} €/srm<br>
+        Zwischensumme: ${sumVorZuschlag.toFixed(2)} €/srm<br>
+        inkl. 5 %: <span style="font-weight:bold">${gesamtSrm.toFixed(2)} €/srm</span>
+      `;
+    }
 
     if(routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
@@ -740,6 +762,7 @@ async function showRoute(a,b){
       <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
       <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
       <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
+      ${saegCalcHtml}
     `).openOn(map);
     map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
   } else alert("Keine Route gefunden!");
