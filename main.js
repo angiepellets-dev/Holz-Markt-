@@ -549,7 +549,6 @@ function handleMarkerClick(label,coord){
     selectedPoints=[];
   }
 }
-
 async function showRoute(a,b){
   const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
   const res = await fetch(url);
@@ -560,8 +559,9 @@ async function showRoute(a,b){
   }
 
   const route = data.routes[0];
-  const dist = (route.distance/1000).toFixed(1);
-  const durationMin = route.duration/60;
+  const distKm = route.distance / 1000;
+  const dist = distKm.toFixed(1);
+  const durationMin = route.duration / 60;
   const hours = Math.floor(durationMin/60);
   const minutes = Math.round(durationMin%60);
   const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
@@ -577,44 +577,14 @@ async function showRoute(a,b){
     ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
     : 0;
 
-  const distKm = parseFloat(dist);
   const preisProKm = distKm < 250 ? 2.15 : 1.85;
+
   const teilstrecke = distKm / 24;
   const berechnung = teilstrecke * preisProKm;
-  const gesamt = ((berechnung + (firmenPreis||0)) * 1.05).toFixed(2);
 
-  function istSaegespaeneWerk(w){
-    if (!w) return false;
-    if (w.productType !== "saegerestholz") return false;
-    const txt = (w.produkt || "").toLowerCase().trim();
-    const txtNorm = txt.replace(/ä/g,"ae").replace(/ö/g,"oe").replace(/ü/g,"ue");
-    return txt.includes("sägespäne") || txtNorm.includes("saegespaene");
-  }
-
-  const saegEintrag = istSaegespaeneWerk(werkA)
-    ? werkA
-    : (istSaegespaeneWerk(werkB) ? werkB : null);
-
-  let saegCalcHtml = "";
-  if (saegEintrag) {
-    const basisPreisSrm = 0;
-    const ladungSrm = 85;
-
-    const grundpreisGesamt = basisPreisSrm * ladungSrm;
-    const transportTeil = 2 * distKm;
-    const sumVorZuschlag = grundpreisGesamt + transportTeil;
-    const sumMit5Prozent = sumVorZuschlag * 1.05;
-    const preisJeSrm = sumMit5Prozent / ladungSrm;
-
-    saegCalcHtml = `
-      <br><b>Kalkulation Sägespäne (€/srm)</b><br>
-      Basis: ${basisPreisSrm.toFixed(2)} * ${ladungSrm} = ${grundpreisGesamt.toFixed(2)} €<br>
-      Transport: 2.15 * ${distKm.toFixed(1)} = ${transportTeil.toFixed(2)} €<br>
-      Zwischensumme: ${sumVorZuschlag.toFixed(2)} <br>
-      inkl. 5 %: ${sumMit5Prozent.toFixed(2)} <br>
-      Ergebnis: <span style="font-weight:bold">${preisJeSrm.toFixed(2)} </span> (÷ ${ladungSrm})
-    `;
-  }
+  // ---- NUR Standardkalkulation, KEINE Sägespäne ----
+  const gesamt = (berechnung + (firmenPreis||0)) * 1.05;
+  // --------------------------------------------------
 
   if(routeLine) map.removeLayer(routeLine);
   routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
@@ -625,11 +595,14 @@ async function showRoute(a,b){
     <b>Dauer:</b> ${durationStr}<br>
     <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
     <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
-    <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt} €</span>
-    ${saegCalcHtml}
+    <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt.toFixed(2)} €</span>
   `).openOn(map);
+
   map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
 }
+
+
+
 
 map.on('click', (e) => {
   const t = e.originalEvent && e.originalEvent.target;
