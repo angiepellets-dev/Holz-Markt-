@@ -1,3 +1,6 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
 <div id="map"></div>
 <input id="searchInput">
 <button id="countryDropdownBtn"></button>
@@ -7,10 +10,8 @@
   </div>
 </div>
 ```html
-<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8">
+
+ <meta charset="UTF-8">
   <title>Pellets / Sägerestholz Karte</title>
   <!-- Leaflet CSS -->
   <link
