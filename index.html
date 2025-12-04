@@ -177,9 +177,7 @@
 </div>
 
 <script>
-  // =======================
   // Karte
-  // =======================
   const map = L.map("map").setView([51, 11], 5);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     minZoom: 4, maxZoom: 10, attribution: "&copy; OpenStreetMap"
@@ -193,74 +191,21 @@
     return "red";
   }
 
-  // =======================
-  // Vereinfachte Länder-Geometrien (Rechtecke, grob!)
-  // =======================
-  const euCountriesGeoJson = {
-    "type": "FeatureCollection",
-    "features": [
-      {
-        "type":"Feature",
-        "properties":{"iso2":"de","name":"Deutschland"},
-        "geometry":{"type":"Polygon","coordinates":[[
-          [5.5,47.0],[5.5,55.0],[15.5,55.0],[15.5,47.0],[5.5,47.0]
-        ]]}
-      },
-      {
-        "type":"Feature",
-        "properties":{"iso2":"at","name":"Österreich"},
-        "geometry":{"type":"Polygon","coordinates":[[
-          [9.0,46.2],[9.0,49.2],[17.5,49.2],[17.5,46.2],[9.0,46.2]
-        ]]}
-      },
-      {
-        "type":"Feature",
-        "properties":{"iso2":"pl","name":"Polen"},
-        "geometry":{"type":"Polygon","coordinates":[[
-          [14.0,49.0],[14.0,55.0],[24.5,55.0],[24.5,49.0],[14.0,49.0]
-        ]]}
-      },
-      {
-        "type":"Feature",
-        "properties":{"iso2":"cz","name":"Tschechien"},
-        "geometry":{"type":"Polygon","coordinates":[[
-          [12.0,48.5],[12.0,51.5],[19.0,51.5],[19.0,48.5],[12.0,48.5]
-        ]]}
-      },
-      {
-        "type":"Feature",
-        "properties":{"iso2":"fr","name":"Frankreich"},
-        "geometry":{"type":"Polygon","coordinates":[[
-          [-5.5,42.0],[-5.5,51.5],[9.5,51.5],[9.5,42.0],[-5.5,42.0]
-        ]]}
-      },
-      {
-        "type":"Feature",
-        "properties":{"iso2":"ch","name":"Schweiz"},
-        "geometry":{"type":"Polygon","coordinates":[[
-          [5.8,45.7],[5.8,47.8],[10.7,47.8],[10.7,45.7],[5.8,45.7]
-        ]]}
-      },
-      {
-        "type":"Feature",
-        "properties":{"iso2":"be","name":"Belgien"},
-        "geometry":{"type":"Polygon","coordinates":[[
-          [2.5,49.2],[2.5,51.7],[6.5,51.7],[6.5,49.2],[2.5,49.2]
-        ]]}
-      },
-      {
-        "type":"Feature",
-        "properties":{"iso2":"sk","name":"Slowakei"},
-        "geometry":{"type":"Polygon","coordinates":[[
-          [16.5,47.5],[16.5,49.5],[23.0,49.5],[23.0,47.5],[16.5,47.5]
-        ]]}
-      }
-    ]
-  };
+  // GeoJSON Länder (wird per fetch geholt)
+  const countriesGeoUrl =
+    "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson";
 
-  // =======================
-  // GeoCache
-  // =======================
+  let countriesGeoData = null;  // Originaldaten
+  let countryLayer = null;      // Leaflet-Layer
+
+  async function loadCountriesGeoData() {
+    if (countriesGeoData) return countriesGeoData;
+    const res = await fetch(countriesGeoUrl);
+    const data = await res.json();
+    countriesGeoData = data;
+    return data;
+  }
+
   const geoCache = JSON.parse(localStorage.getItem("geoCachePellets_EU") || "{}");
   async function geocode(q) {
     if (geoCache[q] && geoCache[q].country_code) {
@@ -286,7 +231,6 @@
     return null;
   }
 
-  // Icons
   const blauesDreieck = L.divIcon({
     className: "custom-triangle",
     html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -312,14 +256,13 @@
     popupAnchor: [0,-20]
   });
 
-  // Daten-Links
+  // CSV-Links
   const sheetUrlPellets = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
   const sheetUrlSaegerestholz = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv&gid=1423782020";
   const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
 
   let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
   let avgPriceByCountry = {};
-  let countryLayer = null;
 
   function parseFirmenWithHeader(rows){
     const lc = (s)=>String(s||"").toLowerCase();
@@ -400,20 +343,37 @@
     return "red";
   }
 
-  function showCountryLayer(){
+  async function showCountryLayer(){
     if (countryLayer) {
       map.removeLayer(countryLayer);
       countryLayer = null;
     }
-    countryLayer = L.geoJSON(euCountriesGeoJson, {
-      style: (feature) => {
-        const cc = (feature.properties.iso2 || "").toLowerCase();
+    const data = await loadCountriesGeoData();
+    const wanted = new Set(["de","at","pl","cz","fr","ch","be","sk"]);
+
+    countryLayer = L.geoJSON(data, {
+      filter: f => {
+        const cc = (f.properties.ISO_A2 || f.properties.iso_a2 || "").toLowerCase();
+        return wanted.has(cc);
+      },
+      style: feature => {
+        const cc = (feature.properties.ISO_A2 || feature.properties.iso_a2 || "").toLowerCase();
         return {
           color: "#333",
           weight: 2,
           fillColor: colorForCountryAvg(cc),
           fillOpacity: 0.5
         };
+      },
+      onEachFeature: (feature, layer) => {
+        const cc = (feature.properties.ISO_A2 || feature.properties.iso_a2 || "").toLowerCase();
+        const avg = avgPriceByCountry[cc];
+        const admin = feature.properties.ADMIN || feature.properties.name || cc.toUpperCase();
+        const txt = `<b>${admin}</b><br>` +
+                    (avg && isFinite(avg)
+                      ? `Durchschnittspreis: ${avg.toFixed(2)} €`
+                      : "Noch kein Durchschnittspreis");
+        layer.bindTooltip(txt, {sticky:true});
       }
     }).addTo(map);
   }
@@ -751,9 +711,9 @@
 
     const allColorOff = !gruen && !orange && !rot && !grau;
 
-    // wenn alle Farben aus → Länderflächen nach Durchschnitt
     if (allColorOff) {
       hideCountryLayer();
+      // async, aber wir müssen nicht warten
       showCountryLayer();
       return;
     } else {
