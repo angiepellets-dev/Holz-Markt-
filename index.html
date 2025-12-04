@@ -106,7 +106,7 @@
 </div>
 
 <script>
-  // ---------- Karte ----------
+  // -------- Grundkarte --------
   const map = L.map("map").setView([51, 11], 5);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     minZoom: 4, maxZoom: 10, attribution: "&copy; OpenStreetMap"
@@ -120,18 +120,11 @@
     return "red";
   }
 
-  // ---------- Länder-GeoJSON wird einmal geladen ----------
+  // -------- Länder-GeoJSON --------
   const countriesGeoUrl =
     "https://raw.githubusercontent.com/datasets/geo-countries/master/data/countries.geojson";
-  let countriesGeoData = null;
   let countryLayer = null;
-
-  async function loadCountriesGeoData() {
-    if (countriesGeoData) return countriesGeoData;
-    const res = await fetch(countriesGeoUrl);
-    countriesGeoData = await res.json();
-    return countriesGeoData;
-  }
+  let countriesGeoData = null;
 
   function colorForCountryAvg(cc){
     const avg = avgPriceByCountry[cc];
@@ -142,14 +135,20 @@
   }
 
   async function initCountryLayer(){
-    const data = await loadCountriesGeoData();
+    const res = await fetch(countriesGeoUrl);
+    const data = await res.json();
+    countriesGeoData = data;
+
     const wanted = new Set(["de","at","pl","cz","fr","ch","be","sk"]);
     countryLayer = L.geoJSON(data, {
-      filter: f => wanted.has(String(f.properties.ISO_A2 || f.properties.iso_a2 || "").toLowerCase()),
-      style: feature => ({
+      filter: f => {
+        const cc = String(f.properties.ISO_A2 || f.properties.iso_a2 || "").toLowerCase();
+        return wanted.has(cc);
+      },
+      style: () => ({
         color:"#333",
         weight:0,
-        fillColor: colorForCountryAvg(String(feature.properties.ISO_A2 || feature.properties.iso_a2 || "").toLowerCase()),
+        fillColor:"#dddddd",
         fillOpacity:0
       }),
       onEachFeature:(feature,layer)=>{
@@ -176,7 +175,7 @@
     });
   }
 
-  // ---------- GeoCache ----------
+  // -------- GeoCache --------
   const geoCache = JSON.parse(localStorage.getItem("geoCachePellets_EU") || "{}");
   async function geocode(q) {
     if (geoCache[q] && geoCache[q].country_code) return geoCache[q];
@@ -294,7 +293,7 @@
     });
     avgPriceByCountry={};
     Object.keys(sums).forEach(cc=>{avgPriceByCountry[cc]=sums[cc]/counts[cc];});
-    // Tooltip-Texte für Länder aktualisieren
+
     if (countryLayer){
       countryLayer.eachLayer(layer=>{
         const f = layer.feature;
@@ -576,9 +575,9 @@
 
     const allColorOff = !gruen && !orange && !rot && !grau;
 
-    // Länderflächen ein/aus
+    // Länderflächen: einblenden, wenn alle Farbfelder aus
     refreshCountryStyles(allColorOff);
-    if(allColorOff) return;
+    if(allColorOff) return; // keine Marker in diesem Modus
 
     for(const m of alleMarker){
       if(m.type==="kunde"){
@@ -769,7 +768,7 @@
   }
 
   (async ()=>{
-    await initCountryLayer();   // Länder-Layer direkt anlegen (anfangs unsichtbar)
+    await initCountryLayer();   // Länder-Layer (anfangs unsichtbar)
     await ladeDaten();
     await buildMap();
   })();
