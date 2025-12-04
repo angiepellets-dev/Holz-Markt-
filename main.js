@@ -434,7 +434,6 @@ function updateCountryButtonLabel() {
     btn.textContent = selected.map(c => names[c] || c.toUpperCase()).join(", ");
   }
 }
-
 function updateLayers(){
   alleMarker.forEach(m=>{
     if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker);
@@ -465,7 +464,11 @@ function updateLayers(){
   const showPellets = document.getElementById("chkPellets")?.checked ?? true;
   const showSaeg    = document.getElementById("chkSaegerestholzNord")?.checked ?? true;
 
+  // NEU: wenn alle Farbfelder aus → Durchschnittsmodus
+  const allColorOff = !gruen && !orange && !rot && !grau;
+
   for(const m of alleMarker){
+    // Kundenmarker
     if(m.type === "kunde"){
       if (kundenFlag && showPellets) {
         if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
@@ -483,11 +486,14 @@ function updateLayers(){
       continue;
     }
 
+    // Werke
     if (m.productType === "saegerestholz" && !showSaeg) continue;
     if (m.productType === "pellets") {
+      // Pellets-Werk, aber als Sägerestholz-Abnehmer zeigen?
       if (!showPellets && !(m.isSaegerAbnehmer && showSaeg)) continue;
     }
 
+    // Sackware-Filter
     if (useSack) {
       const sNorm = (m.sack||"").toLowerCase().replace(/\s+/g,' ').trim();
       const hasFireflies = sNorm.includes("fireflies");
@@ -497,6 +503,7 @@ function updateLayers(){
       if (wantFireflies && want15kg && !(hasFireflies || has15kg)) continue;
     }
 
+    // Zertifikate
     const z = m.zert || "";
     let zertOK = false;
     if(z.includes("enplus") && en) zertOK = true;
@@ -506,36 +513,59 @@ function updateLayers(){
     if(!z && ohne) zertOK = true;
     if(!zertOK) continue;
 
-    const aktiveFarbe = useSack ? m.farbeSack : m.farbeWerk;
-
-    const isGruen  = aktiveFarbe === "green";
-    const isOrange = aktiveFarbe === "orange";
-    const isRot    = aktiveFarbe === "red";
-    const isGrau   = aktiveFarbe === "#9e9e9e";
-
-    let sichtbar = false;
-    if(isGruen && gruen) sichtbar = true;
-    if(isOrange && orange) sichtbar = true;
-    if(isRot && rot) sichtbar = true;
-    if(isGrau && grau) sichtbar = true;
-    if(!sichtbar) continue;
-
+    // Länderfilter
     if (!noCountryFilter) {
       if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
     }
 
+    // Marker wählen (Kreis / Dreieck)
     let layerToUse = m.circleMarker || m.marker;
-
     const isPelletSaegerest = m.source === "pellets" && m.isSaegerAbnehmer;
-
     if (isPelletSaegerest && !showPellets && showSaeg && m.triangleMarker) {
       layerToUse = m.triangleMarker;
     }
 
+    // Farbe bestimmen
+    let aktiveFarbe;
+
+    if (allColorOff) {
+      // DURCHSCHNITTSMODUS: Farbe relativ zum Landesdurchschnitt
+      const preisNow = useSack ? m.preisSack : m.preis;
+      const avg = avgPriceByCountry[m.country_code];
+
+      if (!isFinite(preisNow) || preisNow <= 0 || !avg || !isFinite(avg)) {
+        aktiveFarbe = "#9e9e9e";
+      } else {
+        const diff = preisNow - avg;   // + = teurer als Schnitt
+        if (diff <= -10) {
+          aktiveFarbe = "green";       // deutlich günstiger als Schnitt
+        } else if (diff >= 10) {
+          aktiveFarbe = "red";         // deutlich teurer als Schnitt
+        } else {
+          aktiveFarbe = "orange";      // etwa im Bereich vom Schnitt
+        }
+      }
+    } else {
+      // NORMALER MODUS: feste Preisschwellen
+      aktiveFarbe = useSack ? m.farbeSack : m.farbeWerk;
+
+      const isGruen  = aktiveFarbe === "green";
+      const isOrange = aktiveFarbe === "orange";
+      const isRot    = aktiveFarbe === "red";
+      const isGrau   = aktiveFarbe === "#9e9e9e";
+
+      let sichtbar = false;
+      if(isGruen && gruen) sichtbar = true;
+      if(isOrange && orange) sichtbar = true;
+      if(isRot && rot) sichtbar = true;
+      if(isGrau && grau) sichtbar = true;
+      if(!sichtbar) continue;
+    }
+
+    // Style + Tooltip aktualisieren
     if (layerToUse && layerToUse.setStyle) {
       layerToUse.setStyle({color:aktiveFarbe, fillColor:aktiveFarbe});
     }
-
     if (layerToUse && layerToUse.getTooltip) {
       layerToUse.getTooltip().setContent( tooltipHtmlFromMarker(m) );
     }
@@ -544,140 +574,3 @@ function updateLayers(){
     if (layerToUse) map.addLayer(layerToUse);
   }
 }
-
-function handleMarkerClick(label,coord){
-  selectedPoints.push({label,coord});
-  if(selectedPoints.length===2){
-    const [a,b]=selectedPoints;
-    showRoute(a,b);
-    selectedPoints=[];
-  }
-}
-
-async function showRoute(a,b){
-  const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
-  const res = await fetch(url);
-  const data = await res.json();
-  if(!(data.routes && data.routes.length)){
-    alert("Keine Route gefunden!");
-    return;
-  }
-
-  const route = data.routes[0];
-  const distKm = route.distance / 1000;
-  const dist = distKm.toFixed(1);
-  const durationMin = route.duration / 60;
-  const hours = Math.floor(durationMin/60);
-  const minutes = Math.round(durationMin%60);
-  const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
-  const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
-
-  const useSack = sackFilterAktiv();
-
-  const werkA = werke.find(w => w.firma === a.label);
-  const werkB = werke.find(w => w.firma === b.label);
-  const firmeneintrag = werkA || werkB;
-
-  const firmenPreis = firmeneintrag
-    ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis)
-    : 0;
-
-  const preisProKm = distKm < 250 ? 2.15 : 1.85;
-
-  const teilstrecke = distKm / 24;
-  const berechnung = teilstrecke * preisProKm;
-
-  const gesamt = (berechnung + (firmenPreis||0)) * 1.05;
-
-  if(routeLine) map.removeLayer(routeLine);
-  routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
-  const mid = coords[Math.floor(coords.length/2)];
-  L.popup().setLatLng(mid).setContent(`
-    <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-    <b>Entfernung:</b> ${dist} km<br>
-    <b>Dauer:</b> ${durationStr}<br>
-    <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-    <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
-    <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt.toFixed(2)} €</span>
-  `).openOn(map);
-
-  map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
-}
-
-map.on('click', (e) => {
-  const t = e.originalEvent && e.originalEvent.target;
-  if (t && t.closest) {
-    if (t.closest('.leaflet-marker-icon') ||
-        t.closest('.leaflet-popup') ||
-        t.closest('.leaflet-interactive')) {
-      return;
-    }
-  }
-  if (routeLine) {
-    map.removeLayer(routeLine);
-    routeLine = null;
-  }
-  selectedPoints = [];
-  map.closePopup();
-});
-
-document.addEventListener("change", e => {
-  if (e.target && e.target.matches('input[type="checkbox"]')) {
-    if (e.target.classList.contains("countryChk")) {
-      if (e.target.value === "all" && e.target.checked) {
-        document.querySelectorAll(".countryChk").forEach(ch => {
-          if (ch.value !== "all") ch.checked = false;
-        });
-      } else if (e.target.value !== "all" && e.target.checked) {
-        const allChk = document.querySelector('.countryChk[value="all"]');
-        if (allChk) allChk.checked = false;
-      }
-      updateCountryButtonLabel();
-    }
-    updateLayers();
-  }
-});
-
-const countryBtn = document.getElementById("countryDropdownBtn");
-if (countryBtn) {
-  countryBtn.addEventListener("click", () => {
-    const menu = document.getElementById("countryDropdownMenu");
-    if (!menu) return;
-    menu.style.display = (menu.style.display === "block") ? "none" : "block";
-  });
-}
-
-document.addEventListener("click", (e) => {
-  const dd = document.getElementById("countryDropdown");
-  const menu = document.getElementById("countryDropdownMenu");
-  if (!dd || !menu) return;
-  if (!dd.contains(e.target)) {
-    menu.style.display = "none";
-  }
-});
-
-const searchInput = document.getElementById("searchInput");
-if (searchInput) {
-  searchInput.addEventListener("keydown", e => {
-    if(e.key === "Enter"){
-      const query = e.target.value.toLowerCase().trim();
-      if(!query) return;
-      const treffer = alleMarker.find(m =>
-        m.marker &&
-        m.marker.getTooltip &&
-        m.marker.getTooltip().getContent &&
-        String(m.marker.getTooltip().getContent()).toLowerCase().includes(query)
-      );
-      if(treffer){
-        const latlng = treffer.marker.getLatLng();
-        map.setView(latlng,9);
-        treffer.marker.openTooltip();
-      } else alert("Kein Treffer gefunden.");
-    }
-  });
-}
-
-(async ()=>{
-  await ladeDaten();
-  await buildMap();
-})();
