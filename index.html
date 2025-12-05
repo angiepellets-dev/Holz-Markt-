@@ -751,7 +751,6 @@
 
     const allColorOff = !gruen && !orange && !rot && !grau;
 
-    // wenn alle Farben aus → Länderflächen nach Durchschnitt
     if (allColorOff) {
       hideCountryLayer();
       showCountryLayer();
@@ -846,6 +845,7 @@
     }
   }
 
+  // NUR ROUTE, KEINE LUFTLINIE
   async function showRoute(a,b){
     const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
     const res = await fetch(url);
@@ -856,7 +856,7 @@
     }
 
     const route = data.routes[0];
-    const distKm = route.distance / 1000;
+    const distKm = route.distance / 1000;             // Straßenkilometer
     const dist = distKm.toFixed(1);
     const durationMin = route.duration / 60;
     const hours = Math.floor(durationMin/60);
