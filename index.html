@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Pelletwerke – Europa Preiskarte</title>
 
-  <!-- Leaflet & PapaParse -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
@@ -22,7 +21,6 @@
       box-shadow:0 2px 8px rgba(0,0,0,.12);
       font:14px/1.3 system-ui,Arial,sans-serif;
     }
-
     .cert-box{bottom:12px;left:12px;z-index:1000;}
     .legend{bottom:12px;right:12px;min-width:180px;z-index:3000;}
 
@@ -43,7 +41,7 @@
       width:260px;
     }
 
-    /* WICHTIG: nur das Textfeld stylen, nicht alle Inputs (sonst werden Checkboxen breit) */
+    /* NUR Textfeld stylen, damit Checkboxen nicht kaputt gehen */
     .search-box input[type="text"]{
       width:100%;
       padding:6px 8px;
@@ -98,11 +96,26 @@
       width:14px;height:14px;
       flex:0 0 auto;
     }
+
+    /* Status Overlay (zeigt dir sofort ob Daten geladen wurden) */
+    .status {
+      position:absolute;
+      top:12px; left:12px;
+      z-index:5000;
+      background:#fff;
+      padding:8px 10px;
+      border-radius:6px;
+      box-shadow:0 2px 8px rgba(0,0,0,.15);
+      font:13px/1.3 system-ui,Arial,sans-serif;
+      max-width:420px;
+      white-space:pre-wrap;
+    }
   </style>
 </head>
 <body>
 
 <div id="map"></div>
+<div class="status" id="statusBox">Lade Daten…</div>
 
 <!-- Suche + Länderfilter -->
 <div class="search-box">
@@ -150,9 +163,10 @@
 </div>
 
 <script>
-  // =======================
+  const statusBox = document.getElementById("statusBox");
+  const setStatus = (t)=>{ if(statusBox) statusBox.textContent = t; };
+
   // Karte
-  // =======================
   const map = L.map("map").setView([51, 11], 5);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     minZoom: 4, maxZoom: 10, attribution: "&copy; OpenStreetMap"
@@ -166,13 +180,10 @@
     return "red";
   }
 
-  // =======================
   // GeoCache
-  // =======================
   const geoCache = JSON.parse(localStorage.getItem("geoCacheProdukte_EU") || "{}");
   async function geocode(q) {
     if (geoCache[q] && geoCache[q].country_code) return geoCache[q];
-
     const r = await fetch(
       `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(q)}&limit=1&accept-language=de`
     );
@@ -189,11 +200,10 @@
       localStorage.setItem("geoCacheProdukte_EU", JSON.stringify(geoCache));
       return obj;
     }
-    console.warn("Kein Geocode-Treffer:", q);
     return null;
   }
 
-  // Icons
+  // Icon Kunden
   const blauesDreieck = L.divIcon({
     className: "custom-triangle",
     html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -203,17 +213,12 @@
     popupAnchor: [0,-20]
   });
 
-  // =======================
-  // NEUE TABELLEN (CSV Export)
-  // =======================
-  const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/export?format=csv&gid=0";
-  const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/export?format=csv&gid=0";
+  // ✅ ROBUSTE GVIZ CSV LINKS
+  const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/gviz/tq?tqx=out:csv&gid=0";
+  const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/gviz/tq?tqx=out:csv&gid=0";
 
   let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
 
-  // =======================
-  // Parser: Firmen (firma | ort | plz | land | produkt | preis) + optional zert
-  // =======================
   function parseFirmen(rows){
     const lc = (s)=>String(s||"").toLowerCase().trim();
     const keys = Object.keys(rows[0]||{});
@@ -241,9 +246,6 @@
       .filter(w => w.firma && w.ort);
   }
 
-  // =======================
-  // Parser: Kunden (kunde | ort | plz | land)
-  // =======================
   function parseKunden(rows){
     const lc = (s)=>String(s||"").toLowerCase().trim();
     const keys = Object.keys(rows[0]||{});
@@ -280,7 +282,6 @@
     const s = (p || "").toLowerCase();
     if (s.includes("sägespäne") || s.includes("saegespaene") || s.includes("sägespaene")) return "saegespaene";
     if (s.includes("hackschnitzel")) return "hackschnitzel";
-    // Fallback:
     return "hackschnitzel";
   }
 
@@ -309,9 +310,6 @@
       .on("click",()=>handleMarkerClick(w.firma,c));
   }
 
-  // =======================
-  // Daten laden
-  // =======================
   async function ladeDaten() {
     const firmenPromise = new Promise((resolve) => {
       Papa.parse(sheetUrlFirmen, {
@@ -325,14 +323,11 @@
               const dataset = datasetFromProdukt(w.produkt);
               return { ...w, dataset, productType: dataset };
             });
-            console.log("Firmen geladen:", daten.length);
             resolve(daten);
           }catch(e){
-            console.error("Parsing Fehler (Firmen):", e);
             resolve([]);
           }
-        },
-        error:(err)=>{ console.error("PapaParse Fehler (Firmen):", err); resolve([]); }
+        }
       });
     });
 
@@ -343,15 +338,11 @@
         skipEmptyLines:true,
         complete:(r)=>{
           try{
-            const daten = parseKunden(r.data || []);
-            console.log("Kunden geladen:", daten.length);
-            resolve(daten);
+            resolve(parseKunden(r.data || []));
           }catch(e){
-            console.error("Parsing Fehler (Kunden):", e);
             resolve([]);
           }
-        },
-        error:(err)=>{ console.error("PapaParse Fehler (Kunden):", err); resolve([]); }
+        }
       });
     });
 
@@ -359,18 +350,12 @@
     werke = firmen;
     kunden = kundenDaten;
 
-    // Wenn Firmen leer sind, ist fast immer "Sheet nicht öffentlich"
-    if (!werke.length) {
-      alert("Es wurden 0 Firmen geladen. Bitte prüfe: Google Sheet Freigabe = 'Jeder mit dem Link kann ansehen'.");
-    }
+    setStatus(
+      `Geladen:\nFirmen: ${werke.length}\nKunden: ${kunden.length}\n\nWenn 0: Sheet ist nicht öffentlich / nicht veröffentlicht.`
+    );
   }
 
-  // =======================
-  // Karte bauen
-  // =======================
   function geocodeQueryFromEntry(obj){
-    // Bessere Treffer, damit Firmen wirklich sichtbar werden:
-    // "PLZ Ort, Land"
     const plz = (obj.plz || "").trim();
     const ort = (obj.ort || "").trim();
     const land = (obj.land || "").trim();
@@ -382,7 +367,6 @@
     alleMarker = [];
     const bounds = L.latLngBounds();
 
-    // Firmen (Kreise)
     for(const w of werke){
       const q = geocodeQueryFromEntry(w);
       const c = (geoCache[q] && geoCache[q].country_code) ? geoCache[q] : await geocode(q);
@@ -407,10 +391,8 @@
         plz:w.plz,
         land:w.land,
         preis:w.preis,
-        keinPreis:w.keinPreis,
         farbe:w.farbe,
         zert:(w.zert||"").toLowerCase(),
-        produkt:(w.produkt||""),
         country_code: (c.country_code || ""),
         dataset: w.dataset,
         productType: w.productType
@@ -419,7 +401,6 @@
       bounds.extend([c.lat,c.lon]);
     }
 
-    // Kunden (Dreiecke)
     for(const k of kunden){
       const q = geocodeQueryFromEntry(k);
       const c = (geoCache[q] && geoCache[q].country_code) ? geoCache[q] : await geocode(q);
@@ -442,9 +423,6 @@
     updateLayers();
   }
 
-  // =======================
-  // Filter / Layer
-  // =======================
   function getSelectedCountries() {
     const chks = document.querySelectorAll(".countryChk");
     const selected = [];
@@ -456,7 +434,6 @@
   function updateCountryButtonLabel() {
     const btn = document.getElementById("countryDropdownBtn");
     if (!btn) return;
-
     const selected = getSelectedCountries();
     if (selected.length === 1 && selected[0] === "all") {
       btn.textContent = "Alle Länder";
@@ -467,7 +444,6 @@
   }
 
   function updateLayers(){
-    // remove
     alleMarker.forEach(m=>{
       if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker);
       if (m.circleMarker && map.hasLayer(m.circleMarker)) map.removeLayer(m.circleMarker);
@@ -476,42 +452,35 @@
     const selectedCountries = getSelectedCountries();
     const noCountryFilter = selectedCountries.length === 1 && selectedCountries[0] === "all";
 
-    // Zertifikate (wenn du keine Zertifikats-Spalte nutzt: "Kein Zertifikat" AN lassen)
     const en   = document.getElementById("chkEnPlus")?.checked ?? true;
     const din  = document.getElementById("chkDINplus")?.checked ?? true;
     const sure = document.getElementById("chkSURE")?.checked ?? true;
     const cpp  = document.getElementById("chkCPP")?.checked ?? true;
     const ohne = document.getElementById("chkOhneZert")?.checked ?? true;
 
-    // Farben
     const gruen  = document.getElementById("chkGruen")?.checked ?? true;
     const orange = document.getElementById("chkOrange")?.checked ?? true;
     const rot    = document.getElementById("chkRot")?.checked ?? true;
     const grau   = document.getElementById("chkGrau")?.checked ?? true;
 
-    // Kunden
     const kundenFlag = document.getElementById("chkKunden")?.checked ?? true;
 
-    // Produkte
     const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
     const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
 
     for(const m of alleMarker){
-      // Kunden (Dreiecke)
       if(m.type === "kunde"){
         if (kundenFlag) {
           if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
-            m.marker && map.addLayer(m.marker);
+            map.addLayer(m.marker);
           }
         }
         continue;
       }
 
-      // Produktfilter (Firmen)
       if (m.productType === "hackschnitzel" && !showHacks) continue;
       if (m.productType === "saegespaene"   && !showSaeg)  continue;
 
-      // Zertfilter (wenn Feld leer -> zählt als "Kein Zertifikat")
       const z = (m.zert || "");
       let zertOK = false;
       if(z.includes("enplus") && en) zertOK = true;
@@ -521,12 +490,10 @@
       if(!z && ohne) zertOK = true;
       if(!zertOK) continue;
 
-      // Länderfilter
       if (!noCountryFilter) {
         if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
       }
 
-      // Farbfilter
       const aktiveFarbe = m.farbe;
       const isGruen  = aktiveFarbe === "green";
       const isOrange = aktiveFarbe === "orange";
@@ -540,23 +507,10 @@
       if(isGrau && grau) sichtbar = true;
       if(!sichtbar) continue;
 
-      const layerToUse = m.circleMarker || m.marker;
-
-      if (layerToUse && layerToUse.setStyle) {
-        layerToUse.setStyle({color:aktiveFarbe, fillColor:aktiveFarbe});
-      }
-      if (layerToUse && layerToUse.getTooltip) {
-        layerToUse.getTooltip().setContent( tooltipHtmlFromMarker(m) );
-      }
-
-      m.marker = layerToUse;
-      if (layerToUse) map.addLayer(layerToUse);
+      map.addLayer(m.marker);
     }
   }
 
-  // =======================
-  // Route (bleibt gleich)
-  // =======================
   function handleMarkerClick(label,coord){
     selectedPoints.push({label,coord});
     if(selectedPoints.length===2){
@@ -611,26 +565,6 @@
     map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
   }
 
-  map.on('click', (e) => {
-    const t = e.originalEvent && e.originalEvent.target;
-    if (t && t.closest) {
-      if (t.closest('.leaflet-marker-icon') ||
-          t.closest('.leaflet-popup') ||
-          t.closest('.leaflet-interactive')) {
-        return;
-      }
-    }
-    if (routeLine) {
-      map.removeLayer(routeLine);
-      routeLine = null;
-    }
-    selectedPoints = [];
-    map.closePopup();
-  });
-
-  // =======================
-  // UI Events
-  // =======================
   document.addEventListener("change", e => {
     if (e.target && e.target.matches('input[type="checkbox"]')) {
       if (e.target.classList.contains("countryChk")) {
@@ -687,10 +621,11 @@
     });
   }
 
-  // Start
   (async ()=>{
     await ladeDaten();
     await buildMap();
+    // Statusbox darf bleiben (hilft beim Debug). Wenn du sie später ausblenden willst:
+    // document.getElementById("statusBox").style.display="none";
   })();
 </script>
 
