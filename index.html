@@ -111,7 +111,7 @@
   </div>
 </div>
 
-<!-- Zertifikate + Produkt (Sackware entfernt) -->
+<!-- Zertifikate + Produkt -->
 <div class="cert-box">
   <b>Zertifikate</b><br>
   <label><input type="checkbox" id="chkEnPlus" checked> 1</label><br>
@@ -189,10 +189,14 @@
     popupAnchor: [0,-20]
   });
 
-  // Daten-Links (URLs bleiben – du kannst sie später anpassen)
-  const sheetUrlHackschnitzel = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
-  const sheetUrlSaegespaene   = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv&gid=1423782020";
-  const sheetUrlKunden        = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
+  // =======================
+  // NEUE TABELLEN (CSV Export!)
+  // =======================
+  // Firmen: https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/edit?gid=0#gid=0
+  const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/export?format=csv&gid=0";
+
+  // Kunden: https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/edit?gid=0#gid=0
+  const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/export?format=csv&gid=0";
 
   let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
 
@@ -201,13 +205,12 @@
     const keys = Object.keys(rows[0]||{});
     const findKey = (cands) => keys.find(k => cands.includes(lc(k)));
 
-    const nameKey = findKey(["firma","name","werk"]) || keys[0];
-    const ortKey  = findKey(["ort","stadt","location","standort","adresse"]) || keys[1];
-
-    const preisKey = findKey(["preis","price","€/t","euro","euro_t","werkspreis","€/srm","preis_srm"]);
-
-    const zertKey = findKey(["zertifikate","zertifikat","zert","cert"]);
-    const produktKey = findKey(["produkt","produkte","product","products"]);
+    // passt zu deinem Screenshot: firma | ort | plz | land | produkt | preis
+    const nameKey   = findKey(["firma","name","werk"]) || keys[0];
+    const ortKey    = findKey(["ort","stadt","location","standort","adresse"]) || keys[1];
+    const preisKey  = findKey(["preis","price","€/t","euro","euro_t","werkspreis","€/srm","preis_srm"]) || "preis";
+    const zertKey   = findKey(["zertifikate","zertifikat","zert","cert"]);
+    const produktKey= findKey(["produkt","produkte","product","products"]) || "produkt";
 
     return rows
       .filter(x => (x?.[nameKey]||"").toString().trim() && (x?.[ortKey]||"").toString().trim())
@@ -263,88 +266,65 @@
   }
 
   async function ladeDaten() {
-    const hacksPromise = new Promise((resolve) => {
-      Papa.parse(sheetUrlHackschnitzel, {
-        download: true, header: true,
+    // Firmen laden (eine Tabelle, wir splitten über Spalte "produkt")
+    const firmenPromise = new Promise((resolve) => {
+      Papa.parse(sheetUrlFirmen, {
+        download: true,
+        header: true,
+        skipEmptyLines: true,
         complete: (r) => {
           try{
-            let daten = [];
-            if (r.data && r.data.length && Object.keys(r.data[0]||{}).length > 1) {
-              daten = parseFirmenWithHeader(r.data);
-            }
-            if (!daten.length) {
-              Papa.parse(sheetUrlHackschnitzel, {
-                download: true, header: false,
-                complete: (r2) => {
-                  const rows = r2.data.filter(row => row.length >= 4 && row[0] && row[1]);
-                  const daten2 = rows.map(row => ({
-                    firma: (row[0]||"").trim(),
-                    ort:   (row[1]||"").trim(),
-                    preis: parseFloat(String(row[2]||"0").replace(",", ".")),
-                    zert:  (row[3]||"").trim(),
-                    produkt: ""
-                  }));
-                  resolve(normalizePreise(daten2));
-                }
-              });
-              return;
-            }
-            resolve(normalizePreise(daten));
+            let daten = parseFirmenWithHeader((r.data || []).filter(x => x && Object.keys(x).length));
+            daten = normalizePreise(daten);
+
+            // Zuordnung: produkt enthält "hackschnitzel" oder "sägespäne"
+            const mapped = daten.map(w => {
+              const p = (w.produkt || "").toLowerCase();
+              const isSaeg = p.includes("sägespäne") || p.includes("saegespaene") || p.includes("sägespaene");
+              const isHacks = p.includes("hackschnitzel");
+
+              // Fallback: wenn produkt leer oder unbekannt -> Hackschnitzel (kannst du ändern)
+              const dataset = isSaeg ? "saegespaene" : (isHacks ? "hackschnitzel" : "hackschnitzel");
+              return { ...w, dataset, productType: dataset };
+            });
+
+            resolve(mapped);
           }catch(e){
-            console.error("Header-Parsing Fehler (Hackschnitzel):", e);
+            console.error("Parsing Fehler (Firmen):", e);
             resolve([]);
           }
         }
       });
     });
 
-    const saegPromise = new Promise((resolve) => {
-      Papa.parse(sheetUrlSaegespaene, {
-        download: true, header: true,
-        complete: (r) => {
-          try{
-            let daten = [];
-            if (r.data && r.data.length && Object.keys(r.data[0]||{}).length > 1) {
-              daten = parseFirmenWithHeader(r.data);
-            }
-            if (!daten.length) {
-              Papa.parse(sheetUrlSaegespaene, {
-                download: true, header: false,
-                complete: (r2) => {
-                  const rows = r2.data.filter(row => row.length >= 4 && row[0] && row[1]);
-                  const daten2 = rows.map(row => ({
-                    firma: (row[0]||"").trim(),
-                    ort:   (row[1]||"").trim(),
-                    preis: parseFloat(String(row[2]||"0").replace(",", ".")),
-                    zert:  (row[3]||"").trim(),
-                    produkt: ""
-                  }));
-                  resolve(normalizePreise(daten2));
-                }
-              });
-              return;
-            }
-            resolve(normalizePreise(daten));
-          }catch(e){
-            console.error("Header-Parsing Fehler (Sägespäne):", e);
-            resolve([]);
-          }
-        }
-      });
-    });
-
+    // Kunden laden (Header flexibel: name/firma + ort)
     const kundenPromise = new Promise((resolve)=>{
       Papa.parse(sheetUrlKunden, {
-        download:true, header:true,
+        download:true,
+        header:true,
+        skipEmptyLines:true,
         complete:(r)=>{
-          const headers = Object.keys(r.data[0]||{});
-          const nameKey = headers.find(h=>h.toLowerCase().includes("name"))||"name";
-          const ortKey = headers.find(h=>["ort","adresse","standort","anschrift","stadt","location"].includes(h.toLowerCase()))||"ort";
+          const rows = (r.data || []).filter(x => x && Object.keys(x).length);
+          if (!rows.length) return resolve([]);
 
-          const kundenDaten = r.data
+          const headers = Object.keys(rows[0]||{});
+          const lc = s => String(s||"").toLowerCase();
+
+          const nameKey =
+            headers.find(h=>["name","kunde","kundenname","firma","unternehmen"].includes(lc(h))) ||
+            headers.find(h=>lc(h).includes("name")) ||
+            headers.find(h=>lc(h).includes("kunde")) ||
+            headers[0];
+
+          const ortKey =
+            headers.find(h=>["ort","adresse","standort","anschrift","stadt","location"].includes(lc(h))) ||
+            headers.find(h=>lc(h).includes("ort")) ||
+            headers[1];
+
+          const kundenDaten = rows
             .map(x=>({
-              name:(x[nameKey]||"").trim(),
-              ort:(x[ortKey]||"").trim()
+              name:(x[nameKey]||"").toString().trim(),
+              ort:(x[ortKey]||"").toString().trim()
             }))
             .filter(x=>x.name && x.ort);
 
@@ -353,12 +333,8 @@
       });
     });
 
-    const [hacks, saeg, kundenDaten] = await Promise.all([hacksPromise, saegPromise, kundenPromise]);
-
-    const hacksMitDataset = hacks.map(w => ({ ...w, dataset: "hackschnitzel", productType: "hackschnitzel" }));
-    const saegMitDataset  = saeg.map(w  => ({ ...w, dataset: "saegespaene",   productType: "saegespaene"   }));
-
-    werke = [...hacksMitDataset, ...saegMitDataset];
+    const [firmen, kundenDaten] = await Promise.all([firmenPromise, kundenPromise]);
+    werke = firmen;
     kunden = kundenDaten;
   }
 
@@ -452,7 +428,7 @@
     const selectedCountries = getSelectedCountries();
     const noCountryFilter = selectedCountries.length === 1 && selectedCountries[0] === "all";
 
-    // Zertifikate
+    // Zertifikate (logik bleibt: wir prüfen weiterhin Text im Feld "zert")
     const en   = document.getElementById("chkEnPlus")?.checked ?? true;
     const din  = document.getElementById("chkDINplus")?.checked ?? true;
     const sure = document.getElementById("chkSURE")?.checked ?? true;
@@ -465,7 +441,7 @@
     const rot    = document.getElementById("chkRot")?.checked ?? true;
     const grau   = document.getElementById("chkGrau")?.checked ?? true;
 
-    // Kunden (Dreiecke)
+    // Kunden
     const kundenFlag = document.getElementById("chkKunden")?.checked ?? true;
 
     // Produkte
@@ -473,7 +449,6 @@
     const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
 
     for(const m of alleMarker){
-      // Kunden
       if(m.type === "kunde"){
         if (kundenFlag) {
           if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
@@ -483,11 +458,10 @@
         continue;
       }
 
-      // Produktfilter
       if (m.productType === "hackschnitzel" && !showHacks) continue;
       if (m.productType === "saegespaene"   && !showSaeg)  continue;
 
-      // Zertifikatsfilter (IDs bleiben wie vorher)
+      // Zertfilter
       const z = (m.zert || "");
       let zertOK = false;
       if(z.includes("enplus") && en) zertOK = true;
@@ -539,7 +513,7 @@
     }
   }
 
-  // NUR ROUTE, KEINE LUFTLINIE (Streckenberechnung bleibt)
+  // ROUTE (bleibt gleich)
   async function showRoute(a,b){
     const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
     const res = await fetch(url);
@@ -571,6 +545,7 @@
 
     if(routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
+
     const mid = coords[Math.floor(coords.length/2)];
     L.popup().setLatLng(mid).setContent(`
       <b>Route:</b> ${a.label} ↔ ${b.label}<br>
