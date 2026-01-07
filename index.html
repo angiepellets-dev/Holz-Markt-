@@ -14,60 +14,93 @@
     #map{width:100%;height:100%;}
 
     .legend, .cert-box{
-      position:absolute;background:#fff;padding:8px 10px;border-radius:6px;
-      box-shadow:0 2px 8px rgba(0,0,0,.12);font:14px/1.3 system-ui,Arial,sans-serif;
+      position:absolute;
+      background:#fff;
+      padding:8px 10px;
+      border-radius:6px;
+      box-shadow:0 2px 8px rgba(0,0,0,.12);
+      font:14px/1.3 system-ui,Arial,sans-serif;
     }
     .cert-box{bottom:12px;left:12px;z-index:1000;}
     .legend{bottom:12px;right:12px;min-width:180px;z-index:3000;}
 
     .cert-box input[type="checkbox"],
-    .legend input[type="checkbox"]{width:14px;height:14px;margin-right:5px;vertical-align:middle;}
+    .legend input[type="checkbox"]{
+      width:14px;height:14px;margin-right:5px;vertical-align:middle;
+    }
 
     .search-box{
-      position:absolute;top:12px;right:12px;z-index:1500;background:#fff;
-      padding:8px 10px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.15);
-      font:14px system-ui,Arial,sans-serif;width:260px;
+      position:absolute;
+      top:12px;right:12px;
+      z-index:1500;
+      background:#fff;
+      padding:8px 10px;
+      border-radius:6px;
+      box-shadow:0 2px 8px rgba(0,0,0,.15);
+      font:14px system-ui,Arial,sans-serif;
+      width:260px;
     }
 
     /* nur Textfeld stylen */
     .search-box input[type="text"]{
-      width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;
-      outline:none;box-sizing:border-box;margin-left:4px;
+      width:100%;
+      padding:6px 8px;
+      border:1px solid #ccc;
+      border-radius:4px;
+      outline:none;
+      box-sizing:border-box;
+      margin-left:4px;
     }
 
     .cert-box hr{border:none;height:1px;background:#eee;margin:6px 0;}
 
     .country-dropdown{position:relative;display:block;width:100%;margin-top:8px;}
     .country-dropdown-button{
-      width:100%;background:#fff;border:1px solid #ccc;border-radius:4px;
-      padding:4px 6px;text-align:left;cursor:pointer;box-sizing:border-box;
+      width:100%;
+      background:#fff;
+      border:1px solid #ccc;
+      border-radius:4px;
+      padding:4px 6px;
+      text-align:left;
+      cursor:pointer;
+      box-sizing:border-box;
     }
     .country-dropdown-button:after{content:"▾";float:right;opacity:.6;}
     .country-dropdown-menu{
-      position:absolute;top:110%;left:0;background:#fff;border:1px solid #ccc;
-      border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.12);
-      z-index:4000;display:none;min-width:160px;max-height:260px;overflow-y:auto;
-      padding:8px 10px;box-sizing:border-box;
+      position:absolute;
+      top:110%;left:0;
+      background:#fff;
+      border:1px solid #ccc;
+      border-radius:4px;
+      box-shadow:0 2px 8px rgba(0,0,0,.12);
+      z-index:4000;
+      display:none;
+      min-width:160px;
+      max-height:260px;
+      overflow-y:auto;
+      padding:8px 10px;
+      box-sizing:border-box;
     }
     .country-dropdown-menu label{
-      display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer;user-select:none;
+      display:flex;
+      align-items:center;
+      gap:8px;
+      margin:6px 0;
+      cursor:pointer;
+      user-select:none;
     }
     .country-dropdown-menu label input[type="checkbox"]{
-      margin:0;width:14px;height:14px;flex:0 0 auto;
-    }
-
-    .status{
-      position:absolute;top:12px;left:12px;z-index:5000;background:#fff;
-      padding:8px 10px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.15);
-      font:12px/1.35 system-ui,Arial,sans-serif;max-width:520px;white-space:pre-wrap;
+      margin:0;
+      width:14px;height:14px;
+      flex:0 0 auto;
     }
   </style>
 </head>
 <body>
 
 <div id="map"></div>
-<div class="status" id="statusBox">Lade…</div>
 
+<!-- Suche + Länderfilter -->
 <div class="search-box">
   🔍 <input type="text" id="searchInput" placeholder="Firma, Kunde oder Ort suchen…"/>
 
@@ -88,6 +121,7 @@
   </div>
 </div>
 
+<!-- Zertifikate + Produkt -->
 <div class="cert-box">
   <b>Zertifikate</b><br>
   <label><input type="checkbox" id="chkEnPlus" checked> 1</label><br>
@@ -101,6 +135,7 @@
   <label><input type="checkbox" id="chkSaegespaene" checked> Sägespäne</label>
 </div>
 
+<!-- Legende -->
 <div class="legend">
   <b>Filter Farben</b><br>
   <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 260 €</label><br>
@@ -111,10 +146,9 @@
 </div>
 
 <script>
-  const statusBox = document.getElementById("statusBox");
-  const setStatus = (t)=>{ if(statusBox) statusBox.textContent = t; };
-
+  // =======================
   // Karte
+  // =======================
   const map = L.map("map").setView([51, 11], 5);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     minZoom: 4, maxZoom: 10, attribution: "&copy; OpenStreetMap"
@@ -128,34 +162,44 @@
     return "red";
   }
 
-  // GeoCache
-  const geoCache = JSON.parse(localStorage.getItem("geoCacheProdukte_EU") || "{}");
+  // =======================
+  // GeoCache + Geocode (schneller: parallel + cache)
+  // =======================
+  const GEO_CACHE_KEY = "geoCacheProdukte_EU_v2";
+  const geoCache = JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}");
+  const inFlight = new Map(); // q -> Promise
 
   async function geocodeOnce(q) {
     if (geoCache[q] && geoCache[q].country_code) return geoCache[q];
+    if (inFlight.has(q)) return inFlight.get(q);
 
-    const r = await fetch(
-      `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(q)}&limit=1&accept-language=de`,
-      { headers: { "Accept": "application/json" } }
-    );
-    const d = await r.json();
-    if (d.length) {
-      const item = d[0];
-      const obj = {
-        lat: +item.lat,
-        lon: +item.lon,
-        country: item.address && item.address.country ? item.address.country : "",
-        country_code: item.address && item.address.country_code ? item.address.country_code.toLowerCase() : ""
-      };
-      geoCache[q] = obj;
-      localStorage.setItem("geoCacheProdukte_EU", JSON.stringify(geoCache));
-      return obj;
-    }
-    return null;
+    const p = (async ()=>{
+      const r = await fetch(
+        `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(q)}&limit=1&accept-language=de`,
+        { headers: { "Accept": "application/json" } }
+      );
+      const d = await r.json();
+      if (d && d.length) {
+        const item = d[0];
+        const obj = {
+          lat: +item.lat,
+          lon: +item.lon,
+          country: item.address && item.address.country ? item.address.country : "",
+          country_code: item.address && item.address.country_code ? item.address.country_code.toLowerCase() : ""
+        };
+        geoCache[q] = obj;
+        localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(geoCache));
+        return obj;
+      }
+      return null;
+    })();
+
+    inFlight.set(q, p);
+    try { return await p; }
+    finally { inFlight.delete(q); }
   }
 
-  // ✅ Fallback: probiert mehrere Varianten
-  async function geocodeWithFallback(queries) {
+  async function geocodeWithFallback(queries){
     for (const q of queries) {
       const qq = (q || "").trim();
       if (!qq) continue;
@@ -165,7 +209,9 @@
     return null;
   }
 
-  // Icon Kunden
+  // =======================
+  // Icons
+  // =======================
   const blauesDreieck = L.divIcon({
     className: "custom-triangle",
     html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -175,20 +221,24 @@
     popupAnchor: [0,-20]
   });
 
-  // Tabellen (GViz CSV)
+  // =======================
+  // Tabellen Links (GViz CSV)
+  // =======================
   const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/gviz/tq?tqx=out:csv&gid=0";
   const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/gviz/tq?tqx=out:csv&gid=0";
 
   async function loadCsvAsObjects(url){
     const res = await fetch(url, { cache: "no-store" });
     const text = await res.text();
-    const head = text.slice(0, 200).toLowerCase();
+    const head = text.slice(0, 150).toLowerCase();
     if (head.includes("<html") || head.includes("<!doctype")) throw new Error("Google liefert HTML statt CSV.");
     const parsed = Papa.parse(text, { header:true, skipEmptyLines:true });
     return (parsed.data || []).filter(r => r && Object.keys(r).length);
   }
 
+  // =======================
   // Parser
+  // =======================
   function parseFirmen(rows){
     const lc = (s)=>String(s||"").toLowerCase().trim();
     const keys = Object.keys(rows[0]||{});
@@ -258,57 +308,72 @@
     return `<b>${m.firma}</b><br>${m.ort}${m.plz ? " " + m.plz : ""}${landInfo}<br>${preisTxt}${produktTxt}`;
   }
 
+  // =======================
   // State
+  // =======================
   let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
 
+  // =======================
+  // Daten laden
+  // =======================
   async function ladeDaten(){
-    setStatus("Lade Daten…");
-    const firmenRows = await loadCsvAsObjects(sheetUrlFirmen);
-    const kundenRows = await loadCsvAsObjects(sheetUrlKunden);
+    const [firmenRows, kundenRows] = await Promise.all([
+      loadCsvAsObjects(sheetUrlFirmen),
+      loadCsvAsObjects(sheetUrlKunden)
+    ]);
 
     werke = normalizePreise(parseFirmen(firmenRows)).map(w=>{
       const ds = datasetFromProdukt(w.produkt);
       return { ...w, dataset: ds, productType: ds };
     });
-    kunden = parseKunden(kundenRows);
 
-    setStatus(`Geladen:\nFirmen: ${werke.length}\nKunden: ${kunden.length}\n\nGeocoding läuft…`);
+    kunden = parseKunden(kundenRows);
   }
 
+  function buildQueries(obj){
+    const plz = (obj.plz||"").trim();
+    const ort = (obj.ort||"").trim();
+    const land = (obj.land||"").trim();
+
+    const q1 = `${plz} ${ort}, ${land}`.replace(/\s+/g," ").trim();
+    const q2 = `${ort}, ${land}`.replace(/\s+/g," ").trim();
+    const q3 = `${ort}`.trim();
+    return [q1,q2,q3];
+  }
+
+  // =======================
+  // Map bauen (schneller: parallel geocode)
+  // =======================
   async function buildMap(){
     alleMarker = [];
     const bounds = L.latLngBounds();
 
-    let okF=0, okK=0;
+    // Firmen geocoden parallel
+    const firmGeo = await Promise.all(werke.map(async (w)=>({
+      w,
+      c: await geocodeWithFallback(buildQueries(w))
+    })));
 
-    // Firmen
-    for(const w of werke){
-      const q1 = `${(w.plz||"").trim()} ${(w.ort||"").trim()}, ${(w.land||"").trim()}`.replace(/\s+/g," ").trim();
-      const q2 = `${(w.ort||"").trim()}, ${(w.land||"").trim()}`.replace(/\s+/g," ").trim();
-      const q3 = `${(w.ort||"").trim()}`.trim();
-
-      const c = await geocodeWithFallback([q1,q2,q3]);
-      if(!c) continue;
-      okF++;
+    for (const item of firmGeo){
+      if(!item.c) continue;
+      const { w, c } = item;
 
       const circle = L.circleMarker([c.lat,c.lon],{
         radius:8,
         color:w.farbe,
         fillColor:w.farbe,
         fillOpacity:0.85
-      }).bindTooltip("", {sticky:true})
+      });
+
+      circle.bindTooltip("", {sticky:true})
         .on("tooltipopen", ()=> circle.getTooltip().setContent(tooltipHtmlFirma(w)))
         .on("click",()=>handleMarkerClick(w.firma,c));
 
       alleMarker.push({
         type:"firma",
         marker: circle,
-        firma:w.firma,
-        ort:w.ort,
-        plz:w.plz,
-        land:w.land,
-        preis:w.preis,
-        farbe:w.farbe,
+        firma:w.firma, ort:w.ort, plz:w.plz, land:w.land,
+        preis:w.preis, farbe:w.farbe,
         zert:(w.zert||"").toLowerCase(),
         country_code:(c.country_code||""),
         dataset:w.dataset,
@@ -318,15 +383,15 @@
       bounds.extend([c.lat,c.lon]);
     }
 
-    // Kunden
-    for(const k of kunden){
-      const q1 = `${(k.plz||"").trim()} ${(k.ort||"").trim()}, ${(k.land||"").trim()}`.replace(/\s+/g," ").trim();
-      const q2 = `${(k.ort||"").trim()}, ${(k.land||"").trim()}`.replace(/\s+/g," ").trim();
-      const q3 = `${(k.ort||"").trim()}`.trim();
+    // Kunden geocoden parallel
+    const kundGeo = await Promise.all(kunden.map(async (k)=>({
+      k,
+      c: await geocodeWithFallback(buildQueries(k))
+    })));
 
-      const c = await geocodeWithFallback([q1,q2,q3]);
-      if(!c) continue;
-      okK++;
+    for (const item of kundGeo){
+      if(!item.c) continue;
+      const { k, c } = item;
 
       const m = L.marker([c.lat,c.lon],{icon:blauesDreieck})
         .bindTooltip(`<b>${k.name}</b><br>${k.ort}${k.plz ? " " + k.plz : ""}${k.land ? "<br>" + k.land : ""}`,{sticky:true})
@@ -336,18 +401,13 @@
       bounds.extend([c.lat,c.lon]);
     }
 
-    setStatus(`${statusBox.textContent}\n\nGeocode Treffer:\nFirmen: ${okF}/${werke.length}\nKunden: ${okK}/${kunden.length}`);
-
     if(bounds.isValid()) map.fitBounds(bounds.pad(0.15));
     updateLayers();
-
-    // Wenn hier 0/… steht, sieht man nix -> Geocoding Problem
-    if (okF===0 && okK===0) {
-      alert("Geocoding hat keine Treffer geliefert. Prüfe Ort/PLZ/Land Schreibweise in den Tabellen.");
-    }
   }
 
+  // =======================
   // Filter
+  // =======================
   function getSelectedCountries() {
     const chks = document.querySelectorAll(".countryChk");
     const selected = [];
@@ -369,7 +429,9 @@
 
   function updateLayers(){
     // remove
-    alleMarker.forEach(m=>{ if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker); });
+    alleMarker.forEach(m=>{
+      if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker);
+    });
 
     const selectedCountries = getSelectedCountries();
     const noCountryFilter = selectedCountries.length === 1 && selectedCountries[0] === "all";
@@ -433,7 +495,9 @@
     }
   }
 
-  // Route
+  // =======================
+  // Route (wie gehabt)
+  // =======================
   function handleMarkerClick(label,coord){
     selectedPoints.push({label,coord});
     if(selectedPoints.length===2){
@@ -487,12 +551,33 @@
     map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
   }
 
+  map.on('click', (e) => {
+    const t = e.originalEvent && e.originalEvent.target;
+    if (t && t.closest) {
+      if (t.closest('.leaflet-marker-icon') ||
+          t.closest('.leaflet-popup') ||
+          t.closest('.leaflet-interactive')) {
+        return;
+      }
+    }
+    if (routeLine) {
+      map.removeLayer(routeLine);
+      routeLine = null;
+    }
+    selectedPoints = [];
+    map.closePopup();
+  });
+
+  // =======================
   // UI Events
+  // =======================
   document.addEventListener("change", e => {
     if (e.target && e.target.matches('input[type="checkbox"]')) {
       if (e.target.classList.contains("countryChk")) {
         if (e.target.value === "all" && e.target.checked) {
-          document.querySelectorAll(".countryChk").forEach(ch => { if (ch.value !== "all") ch.checked = false; });
+          document.querySelectorAll(".countryChk").forEach(ch => {
+            if (ch.value !== "all") ch.checked = false;
+          });
         } else if (e.target.value !== "all" && e.target.checked) {
           const allChk = document.querySelector('.countryChk[value="all"]');
           if (allChk) allChk.checked = false;
@@ -542,13 +627,14 @@
     });
   }
 
+  // Start
   (async ()=>{
     try{
       await ladeDaten();
       await buildMap();
     }catch(err){
-      setStatus("FEHLER:\n" + (err?.message || String(err)));
       console.error(err);
+      alert("Fehler beim Laden. Bitte Konsole öffnen (F12) für Details.");
     }
   })();
 </script>
