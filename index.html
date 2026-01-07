@@ -14,86 +14,49 @@
     #map{width:100%;height:100%;}
 
     .legend, .cert-box{
-      position:absolute;
-      background:#fff;
-      padding:8px 10px;
-      border-radius:6px;
-      box-shadow:0 2px 8px rgba(0,0,0,.12);
-      font:14px/1.3 system-ui,Arial,sans-serif;
+      position:absolute;background:#fff;padding:8px 10px;border-radius:6px;
+      box-shadow:0 2px 8px rgba(0,0,0,.12);font:14px/1.3 system-ui,Arial,sans-serif;
     }
     .cert-box{bottom:12px;left:12px;z-index:1000;}
     .legend{bottom:12px;right:12px;min-width:180px;z-index:3000;}
 
     .cert-box input[type="checkbox"],
-    .legend input[type="checkbox"]{
-      width:14px;height:14px;margin-right:5px;vertical-align:middle;
-    }
+    .legend input[type="checkbox"]{width:14px;height:14px;margin-right:5px;vertical-align:middle;}
 
     .search-box{
-      position:absolute;
-      top:12px;right:12px;
-      z-index:1500;
-      background:#fff;
-      padding:8px 10px;
-      border-radius:6px;
-      box-shadow:0 2px 8px rgba(0,0,0,.15);
-      font:14px system-ui,Arial,sans-serif;
-      width:260px;
+      position:absolute;top:12px;right:12px;z-index:1500;background:#fff;
+      padding:8px 10px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.15);
+      font:14px system-ui,Arial,sans-serif;width:280px;
     }
-
-    /* nur Textfeld stylen */
     .search-box input[type="text"]{
-      width:100%;
-      padding:6px 8px;
-      border:1px solid #ccc;
-      border-radius:4px;
-      outline:none;
-      box-sizing:border-box;
-      margin-left:4px;
+      width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;
+      outline:none;box-sizing:border-box;margin-left:4px;
+    }
+    .search-hint{
+      margin-top:6px;
+      font-size:12px;
+      opacity:.75;
+      line-height:1.25;
     }
 
     .cert-box hr{border:none;height:1px;background:#eee;margin:6px 0;}
 
     .country-dropdown{position:relative;display:block;width:100%;margin-top:8px;}
     .country-dropdown-button{
-      width:100%;
-      background:#fff;
-      border:1px solid #ccc;
-      border-radius:4px;
-      padding:4px 6px;
-      text-align:left;
-      cursor:pointer;
-      box-sizing:border-box;
+      width:100%;background:#fff;border:1px solid #ccc;border-radius:4px;
+      padding:4px 6px;text-align:left;cursor:pointer;box-sizing:border-box;
     }
     .country-dropdown-button:after{content:"▾";float:right;opacity:.6;}
     .country-dropdown-menu{
-      position:absolute;
-      top:110%;left:0;
-      background:#fff;
-      border:1px solid #ccc;
-      border-radius:4px;
-      box-shadow:0 2px 8px rgba(0,0,0,.12);
-      z-index:4000;
-      display:none;
-      min-width:160px;
-      max-height:260px;
-      overflow-y:auto;
-      padding:8px 10px;
-      box-sizing:border-box;
+      position:absolute;top:110%;left:0;background:#fff;border:1px solid #ccc;
+      border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.12);
+      z-index:4000;display:none;min-width:160px;max-height:260px;overflow-y:auto;
+      padding:8px 10px;box-sizing:border-box;
     }
     .country-dropdown-menu label{
-      display:flex;
-      align-items:center;
-      gap:8px;
-      margin:6px 0;
-      cursor:pointer;
-      user-select:none;
+      display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer;user-select:none;
     }
-    .country-dropdown-menu label input[type="checkbox"]{
-      margin:0;
-      width:14px;height:14px;
-      flex:0 0 auto;
-    }
+    .country-dropdown-menu label input[type="checkbox"]{margin:0;width:14px;height:14px;flex:0 0 auto;}
   </style>
 </head>
 <body>
@@ -102,9 +65,13 @@
 
 <!-- Suche + Länderfilter -->
 <div class="search-box">
-  🔍 <input type="text" id="searchInput" placeholder="Firma, Kunde oder Ort suchen…"/>
+  🔍 <input type="text" id="searchInput" placeholder="Firma, Kunde oder Ort/Adresse suchen…"/>
+  <div class="search-hint">
+    Enter: zuerst Treffer in Firmen/Kunden, sonst Ort geocodieren.<br>
+    Danach 2. Punkt anklicken/ suchen → Route.
+  </div>
 
-  <b style="display:block;margin-top:6px;">Land / Länder filtern</b>
+  <b style="display:block;margin-top:8px;">Land / Länder filtern</b>
   <div class="country-dropdown" id="countryDropdown">
     <div class="country-dropdown-button" id="countryDropdownBtn">Alle Länder</div>
     <div class="country-dropdown-menu" id="countryDropdownMenu">
@@ -147,9 +114,9 @@
 
 <script>
   // =======================
-  // Karte
+  // Karte + mehr Zoom
   // =======================
-  const map = L.map("map").setView([51, 11], 5);
+  const map = L.map("map", { maxZoom: 19 }).setView([51, 11], 5);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     minZoom: 4, maxZoom: 19, attribution: "&copy; OpenStreetMap"
   }).addTo(map);
@@ -163,11 +130,11 @@
   }
 
   // =======================
-  // GeoCache + Geocode (schneller: parallel + cache)
+  // GeoCache + Geocode (parallel + cache)
   // =======================
-  const GEO_CACHE_KEY = "geoCacheProdukte_EU_v2";
+  const GEO_CACHE_KEY = "geoCacheProdukte_EU_v3";
   const geoCache = JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}");
-  const inFlight = new Map(); // q -> Promise
+  const inFlight = new Map();
 
   async function geocodeOnce(q) {
     if (geoCache[q] && geoCache[q].country_code) return geoCache[q];
@@ -221,8 +188,18 @@
     popupAnchor: [0,-20]
   });
 
+  const ortIcon = L.divIcon({
+    className: "custom-place",
+    html: `<svg width="26" height="26" viewBox="0 0 24 24">
+      <path d="M12 2c-3.3 0-6 2.7-6 6 0 4.5 6 14 6 14s6-9.5 6-14c0-3.3-2.7-6-6-6z" fill="#111" stroke="#fff" stroke-width="1.2"/>
+      <circle cx="12" cy="8" r="2.4" fill="#fff"/>
+    </svg>`,
+    iconAnchor: [13,24],
+    popupAnchor: [0,-18]
+  });
+
   // =======================
-  // Tabellen Links (GViz CSV)
+  // Tabellen Links
   // =======================
   const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/gviz/tq?tqx=out:csv&gid=0";
   const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/gviz/tq?tqx=out:csv&gid=0";
@@ -312,9 +289,20 @@
   // State
   // =======================
   let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
+  let tempSearchMarker = null;
+
+  function buildQueries(obj){
+    const plz = (obj.plz||"").trim();
+    const ort = (obj.ort||"").trim();
+    const land = (obj.land||"").trim();
+    const q1 = `${plz} ${ort}, ${land}`.replace(/\s+/g," ").trim();
+    const q2 = `${ort}, ${land}`.replace(/\s+/g," ").trim();
+    const q3 = `${ort}`.trim();
+    return [q1,q2,q3];
+  }
 
   // =======================
-  // Daten laden
+  // Daten laden + Map bauen
   // =======================
   async function ladeDaten(){
     const [firmenRows, kundenRows] = await Promise.all([
@@ -330,30 +318,12 @@
     kunden = parseKunden(kundenRows);
   }
 
-  function buildQueries(obj){
-    const plz = (obj.plz||"").trim();
-    const ort = (obj.ort||"").trim();
-    const land = (obj.land||"").trim();
-
-    const q1 = `${plz} ${ort}, ${land}`.replace(/\s+/g," ").trim();
-    const q2 = `${ort}, ${land}`.replace(/\s+/g," ").trim();
-    const q3 = `${ort}`.trim();
-    return [q1,q2,q3];
-  }
-
-  // =======================
-  // Map bauen (schneller: parallel geocode)
-  // =======================
   async function buildMap(){
     alleMarker = [];
     const bounds = L.latLngBounds();
 
-    // Firmen geocoden parallel
-    const firmGeo = await Promise.all(werke.map(async (w)=>({
-      w,
-      c: await geocodeWithFallback(buildQueries(w))
-    })));
-
+    // Firmen parallel geocoden
+    const firmGeo = await Promise.all(werke.map(async (w)=>({ w, c: await geocodeWithFallback(buildQueries(w)) })));
     for (const item of firmGeo){
       if(!item.c) continue;
       const { w, c } = item;
@@ -372,8 +342,12 @@
       alleMarker.push({
         type:"firma",
         marker: circle,
-        firma:w.firma, ort:w.ort, plz:w.plz, land:w.land,
-        preis:w.preis, farbe:w.farbe,
+        firma:w.firma,
+        ort:w.ort,
+        plz:w.plz,
+        land:w.land,
+        preis:w.preis,
+        farbe:w.farbe,
         zert:(w.zert||"").toLowerCase(),
         country_code:(c.country_code||""),
         dataset:w.dataset,
@@ -383,12 +357,8 @@
       bounds.extend([c.lat,c.lon]);
     }
 
-    // Kunden geocoden parallel
-    const kundGeo = await Promise.all(kunden.map(async (k)=>({
-      k,
-      c: await geocodeWithFallback(buildQueries(k))
-    })));
-
+    // Kunden parallel geocoden
+    const kundGeo = await Promise.all(kunden.map(async (k)=>({ k, c: await geocodeWithFallback(buildQueries(k)) })));
     for (const item of kundGeo){
       if(!item.c) continue;
       const { k, c } = item;
@@ -406,7 +376,7 @@
   }
 
   // =======================
-  // Filter
+  // Filter / Layer
   // =======================
   function getSelectedCountries() {
     const chks = document.querySelectorAll(".countryChk");
@@ -428,7 +398,6 @@
   }
 
   function updateLayers(){
-    // remove
     alleMarker.forEach(m=>{
       if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker);
     });
@@ -496,7 +465,7 @@
   }
 
   // =======================
-  // Route (wie gehabt)
+  // ROUTE (wie gehabt)
   // =======================
   function handleMarkerClick(label,coord){
     selectedPoints.push({label,coord});
@@ -560,13 +529,50 @@
         return;
       }
     }
-    if (routeLine) {
-      map.removeLayer(routeLine);
-      routeLine = null;
-    }
+    if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
     selectedPoints = [];
     map.closePopup();
   });
+
+  // =======================
+  // NEU: Suche kann auch freie Orte geocodieren
+  // =======================
+  async function searchOrGeocode(query){
+    // 1) Versuch: vorhandene Marker (Firma/Kunde) finden
+    const hit = alleMarker.find(m =>
+      m.marker &&
+      m.marker.getTooltip &&
+      m.marker.getTooltip().getContent &&
+      String(m.marker.getTooltip().getContent()).toLowerCase().includes(query)
+    );
+    if (hit) {
+      const latlng = hit.marker.getLatLng();
+      map.setView(latlng, 9);
+      hit.marker.openTooltip();
+      // als Punkt für Route nutzen:
+      handleMarkerClick(query.toUpperCase(), { lat: latlng.lat, lon: latlng.lng, country_code: hit.country_code || "" });
+      return;
+    }
+
+    // 2) Kein Treffer -> als Ort/Adresse geocodieren
+    const c = await geocodeWithFallback([query]);
+    if(!c){
+      alert("Kein Treffer gefunden.");
+      return;
+    }
+
+    // temp Marker setzen/ersetzen
+    if (tempSearchMarker) map.removeLayer(tempSearchMarker);
+    tempSearchMarker = L.marker([c.lat, c.lon], { icon: ortIcon })
+      .bindTooltip(`<b>Ort:</b> ${query}`, {sticky:true})
+      .addTo(map);
+
+    map.setView([c.lat, c.lon], 10);
+    tempSearchMarker.openTooltip();
+
+    // als Punkt für Route nutzen
+    handleMarkerClick(`Ort: ${query}`, c);
+  }
 
   // =======================
   // UI Events
@@ -575,9 +581,7 @@
     if (e.target && e.target.matches('input[type="checkbox"]')) {
       if (e.target.classList.contains("countryChk")) {
         if (e.target.value === "all" && e.target.checked) {
-          document.querySelectorAll(".countryChk").forEach(ch => {
-            if (ch.value !== "all") ch.checked = false;
-          });
+          document.querySelectorAll(".countryChk").forEach(ch => { if (ch.value !== "all") ch.checked = false; });
         } else if (e.target.value !== "all" && e.target.checked) {
           const allChk = document.querySelector('.countryChk[value="all"]');
           if (allChk) allChk.checked = false;
@@ -606,23 +610,16 @@
 
   const searchInput = document.getElementById("searchInput");
   if (searchInput) {
-    searchInput.addEventListener("keydown", e => {
+    searchInput.addEventListener("keydown", async (e) => {
       if(e.key === "Enter"){
         const query = e.target.value.toLowerCase().trim();
         if(!query) return;
-
-        const treffer = alleMarker.find(m =>
-          m.marker &&
-          m.marker.getTooltip &&
-          m.marker.getTooltip().getContent &&
-          String(m.marker.getTooltip().getContent()).toLowerCase().includes(query)
-        );
-
-        if(treffer){
-          const latlng = treffer.marker.getLatLng();
-          map.setView(latlng,9);
-          treffer.marker.openTooltip();
-        } else alert("Kein Treffer gefunden.");
+        try{
+          await searchOrGeocode(query);
+        }catch(err){
+          console.error(err);
+          alert("Fehler beim Suchen/Geocoding.");
+        }
       }
     });
   }
