@@ -42,7 +42,9 @@
       font:14px system-ui,Arial,sans-serif;
       width:260px;
     }
-    .search-box input{
+
+    /* WICHTIG: nur das Textfeld stylen, nicht alle Inputs (sonst werden Checkboxen breit) */
+    .search-box input[type="text"]{
       width:100%;
       padding:6px 8px;
       border:1px solid #ccc;
@@ -52,9 +54,7 @@
       margin-left:4px;
     }
 
-    .cert-box hr{
-      border:none;height:1px;background:#eee;margin:6px 0;
-    }
+    .cert-box hr{border:none;height:1px;background:#eee;margin:6px 0;}
 
     .country-dropdown{position:relative;display:block;width:100%;margin-top:8px;}
     .country-dropdown-button{
@@ -80,10 +80,24 @@
       min-width:160px;
       max-height:260px;
       overflow-y:auto;
-      padding:6px 8px;
+      padding:8px 10px;
       box-sizing:border-box;
     }
-    .country-dropdown-menu label{display:block;cursor:pointer;margin-bottom:3px;}
+
+    /* Checkbox ordentlich links neben dem Text */
+    .country-dropdown-menu label{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      margin:6px 0;
+      cursor:pointer;
+      user-select:none;
+    }
+    .country-dropdown-menu label input[type="checkbox"]{
+      margin:0;
+      width:14px;height:14px;
+      flex:0 0 auto;
+    }
   </style>
 </head>
 <body>
@@ -190,64 +204,96 @@
   });
 
   // =======================
-  // NEUE TABELLEN (CSV Export!)
+  // NEUE TABELLEN (CSV Export)
   // =======================
-  // Firmen: https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/edit?gid=0#gid=0
   const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/export?format=csv&gid=0";
-
-  // Kunden: https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/edit?gid=0#gid=0
   const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/export?format=csv&gid=0";
 
   let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
 
-  function parseFirmenWithHeader(rows){
-    const lc = (s)=>String(s||"").toLowerCase();
+  // =======================
+  // Parser: Firmen (firma | ort | plz | land | produkt | preis) + optional zert
+  // =======================
+  function parseFirmen(rows){
+    const lc = (s)=>String(s||"").toLowerCase().trim();
     const keys = Object.keys(rows[0]||{});
     const findKey = (cands) => keys.find(k => cands.includes(lc(k)));
 
-    // passt zu deinem Screenshot: firma | ort | plz | land | produkt | preis
-    const nameKey   = findKey(["firma","name","werk"]) || keys[0];
-    const ortKey    = findKey(["ort","stadt","location","standort","adresse"]) || keys[1];
-    const preisKey  = findKey(["preis","price","€/t","euro","euro_t","werkspreis","€/srm","preis_srm"]) || "preis";
-    const zertKey   = findKey(["zertifikate","zertifikat","zert","cert"]);
-    const produktKey= findKey(["produkt","produkte","product","products"]) || "produkt";
+    const firmaKey   = findKey(["firma","name","werk"]) || "firma";
+    const ortKey     = findKey(["ort","stadt","location","standort","adresse"]) || "ort";
+    const plzKey     = findKey(["plz","zip","postcode","postleitzahl"]) || "plz";
+    const landKey    = findKey(["land","country"]) || "land";
+    const produktKey = findKey(["produkt","produkte","product","products"]) || "produkt";
+    const preisKey   = findKey(["preis","price","€/t","euro","euro_t","werkspreis","€/srm","preis_srm"]) || "preis";
+    const zertKey    = findKey(["zertifikate","zertifikat","zert","cert"]); // optional
 
-    return rows
-      .filter(x => (x?.[nameKey]||"").toString().trim() && (x?.[ortKey]||"").toString().trim())
+    return (rows || [])
+      .filter(x => x && Object.keys(x).length)
       .map(x => ({
-        firma: (x[nameKey]||"").toString().trim(),
+        firma: (x[firmaKey]||"").toString().trim(),
         ort: (x[ortKey]||"").toString().trim(),
+        plz: (x[plzKey]||"").toString().trim(),
+        land: (x[landKey]||"").toString().trim(),
+        produkt: (x[produktKey]||"").toString().trim(),
         preis: parseFloat(String(x?.[preisKey] ?? "0").replace(",", ".")),
-        zert: (x?.[zertKey]||"").toString().trim(),
-        produkt: produktKey ? (x?.[produktKey] || "").toString().trim() : ""
-      }));
+        zert: zertKey ? (x?.[zertKey]||"").toString().trim() : ""
+      }))
+      .filter(w => w.firma && w.ort);
+  }
+
+  // =======================
+  // Parser: Kunden (kunde | ort | plz | land)
+  // =======================
+  function parseKunden(rows){
+    const lc = (s)=>String(s||"").toLowerCase().trim();
+    const keys = Object.keys(rows[0]||{});
+    const findKey = (cands) => keys.find(k => cands.includes(lc(k)));
+
+    const kundeKey = findKey(["kunde","name","firma","unternehmen"]) || "kunde";
+    const ortKey   = findKey(["ort","stadt","location","adresse","standort"]) || "ort";
+    const plzKey   = findKey(["plz","zip","postcode","postleitzahl"]) || "plz";
+    const landKey  = findKey(["land","country"]) || "land";
+
+    return (rows || [])
+      .filter(x => x && Object.keys(x).length)
+      .map(x => ({
+        name: (x[kundeKey]||"").toString().trim(),
+        ort: (x[ortKey]||"").toString().trim(),
+        plz: (x[plzKey]||"").toString().trim(),
+        land: (x[landKey]||"").toString().trim()
+      }))
+      .filter(k => k.name && k.ort);
   }
 
   function normalizePreise(daten){
-    const gültige = daten.filter(w => !isNaN(w.preis) && w.preis > 0);
+    const gültige = daten.filter(w => isFinite(w.preis) && w.preis > 0);
     const avg = gültige.length ? (gültige.reduce((a,b)=>a+b.preis,0)/gültige.length) : 0;
 
     return daten.map(w=>{
-      if(isNaN(w.preis)||w.preis<=0){ w.preis=avg; w.keinPreis=true; } else w.keinPreis=false;
+      if(!isFinite(w.preis) || w.preis<=0){ w.preis=avg; w.keinPreis=true; } else w.keinPreis=false;
       w.farbe = colorForPrice(w.preis, w.keinPreis);
       return w;
     });
   }
 
+  function datasetFromProdukt(p){
+    const s = (p || "").toLowerCase();
+    if (s.includes("sägespäne") || s.includes("saegespaene") || s.includes("sägespaene")) return "saegespaene";
+    if (s.includes("hackschnitzel")) return "hackschnitzel";
+    // Fallback:
+    return "hackschnitzel";
+  }
+
   function tooltipHtmlFromMarker(m){
     const preisTxt = (isFinite(m.preis) && m.preis > 0) ? `${m.preis.toFixed(2)} €` : "–";
     const zertInfo = m.zert ? `<br><b>Zertifikat:</b> ${m.zert}` : "";
+    const landInfo = m.land ? `<br><b>Land:</b> ${m.land}` : "";
 
     let produktTxt = "";
-    if (m.dataset === "hackschnitzel") {
-      produktTxt = "<br><b>Produkt:</b> Hackschnitzel";
-      if (m.produkt) produktTxt += ` – ${m.produkt}`;
-    } else if (m.dataset === "saegespaene") {
-      produktTxt = "<br><b>Produkt:</b> Sägespäne";
-      if (m.produkt) produktTxt += ` – ${m.produkt}`;
-    }
+    if (m.dataset === "hackschnitzel") produktTxt = "<br><b>Produkt:</b> Hackschnitzel";
+    if (m.dataset === "saegespaene")   produktTxt = "<br><b>Produkt:</b> Sägespäne";
 
-    return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${produktTxt}`;
+    return `<b>${m.firma}</b><br>${m.ort}${m.plz ? " " + m.plz : ""}${landInfo}<br>${preisTxt}${zertInfo}${produktTxt}`;
   }
 
   function attachWerkInteractions(layer, w, c){
@@ -255,99 +301,94 @@
       .bindTooltip("", {sticky:true})
       .on("tooltipopen", () => {
         layer.getTooltip().setContent( tooltipHtmlFromMarker({
-          firma:w.firma, ort:w.ort,
-          preis:w.preis,
-          zert:(w.zert||""),
-          produkt:(w.produkt||""),
+          firma:w.firma, ort:w.ort, plz:w.plz, land:w.land,
+          preis:w.preis, zert:(w.zert||""),
           dataset:w.dataset
         }));
       })
       .on("click",()=>handleMarkerClick(w.firma,c));
   }
 
+  // =======================
+  // Daten laden
+  // =======================
   async function ladeDaten() {
-    // Firmen laden (eine Tabelle, wir splitten über Spalte "produkt")
     const firmenPromise = new Promise((resolve) => {
       Papa.parse(sheetUrlFirmen, {
-        download: true,
-        header: true,
-        skipEmptyLines: true,
-        complete: (r) => {
+        download:true,
+        header:true,
+        skipEmptyLines:true,
+        complete:(r)=>{
           try{
-            let daten = parseFirmenWithHeader((r.data || []).filter(x => x && Object.keys(x).length));
-            daten = normalizePreise(daten);
-
-            // Zuordnung: produkt enthält "hackschnitzel" oder "sägespäne"
-            const mapped = daten.map(w => {
-              const p = (w.produkt || "").toLowerCase();
-              const isSaeg = p.includes("sägespäne") || p.includes("saegespaene") || p.includes("sägespaene");
-              const isHacks = p.includes("hackschnitzel");
-
-              // Fallback: wenn produkt leer oder unbekannt -> Hackschnitzel (kannst du ändern)
-              const dataset = isSaeg ? "saegespaene" : (isHacks ? "hackschnitzel" : "hackschnitzel");
+            let daten = parseFirmen(r.data || []);
+            daten = normalizePreise(daten).map(w=>{
+              const dataset = datasetFromProdukt(w.produkt);
               return { ...w, dataset, productType: dataset };
             });
-
-            resolve(mapped);
+            console.log("Firmen geladen:", daten.length);
+            resolve(daten);
           }catch(e){
             console.error("Parsing Fehler (Firmen):", e);
             resolve([]);
           }
-        }
+        },
+        error:(err)=>{ console.error("PapaParse Fehler (Firmen):", err); resolve([]); }
       });
     });
 
-    // Kunden laden (Header flexibel: name/firma + ort)
     const kundenPromise = new Promise((resolve)=>{
       Papa.parse(sheetUrlKunden, {
         download:true,
         header:true,
         skipEmptyLines:true,
         complete:(r)=>{
-          const rows = (r.data || []).filter(x => x && Object.keys(x).length);
-          if (!rows.length) return resolve([]);
-
-          const headers = Object.keys(rows[0]||{});
-          const lc = s => String(s||"").toLowerCase();
-
-          const nameKey =
-            headers.find(h=>["name","kunde","kundenname","firma","unternehmen"].includes(lc(h))) ||
-            headers.find(h=>lc(h).includes("name")) ||
-            headers.find(h=>lc(h).includes("kunde")) ||
-            headers[0];
-
-          const ortKey =
-            headers.find(h=>["ort","adresse","standort","anschrift","stadt","location"].includes(lc(h))) ||
-            headers.find(h=>lc(h).includes("ort")) ||
-            headers[1];
-
-          const kundenDaten = rows
-            .map(x=>({
-              name:(x[nameKey]||"").toString().trim(),
-              ort:(x[ortKey]||"").toString().trim()
-            }))
-            .filter(x=>x.name && x.ort);
-
-          resolve(kundenDaten);
-        }
+          try{
+            const daten = parseKunden(r.data || []);
+            console.log("Kunden geladen:", daten.length);
+            resolve(daten);
+          }catch(e){
+            console.error("Parsing Fehler (Kunden):", e);
+            resolve([]);
+          }
+        },
+        error:(err)=>{ console.error("PapaParse Fehler (Kunden):", err); resolve([]); }
       });
     });
 
     const [firmen, kundenDaten] = await Promise.all([firmenPromise, kundenPromise]);
     werke = firmen;
     kunden = kundenDaten;
+
+    // Wenn Firmen leer sind, ist fast immer "Sheet nicht öffentlich"
+    if (!werke.length) {
+      alert("Es wurden 0 Firmen geladen. Bitte prüfe: Google Sheet Freigabe = 'Jeder mit dem Link kann ansehen'.");
+    }
+  }
+
+  // =======================
+  // Karte bauen
+  // =======================
+  function geocodeQueryFromEntry(obj){
+    // Bessere Treffer, damit Firmen wirklich sichtbar werden:
+    // "PLZ Ort, Land"
+    const plz = (obj.plz || "").trim();
+    const ort = (obj.ort || "").trim();
+    const land = (obj.land || "").trim();
+    const left = [plz, ort].filter(Boolean).join(" ");
+    return [left, land].filter(Boolean).join(", ");
   }
 
   async function buildMap(){
     alleMarker = [];
     const bounds = L.latLngBounds();
 
+    // Firmen (Kreise)
     for(const w of werke){
-      const c = (geoCache[w.ort] && geoCache[w.ort].country_code) ? geoCache[w.ort] : await geocode(w.ort);
+      const q = geocodeQueryFromEntry(w);
+      const c = (geoCache[q] && geoCache[q].country_code) ? geoCache[q] : await geocode(q);
       if(!c) continue;
 
       const farbeInit = w.farbe;
-
       const circleMarker = L.circleMarker([c.lat,c.lon],{
         radius:8,
         color:farbeInit,
@@ -363,6 +404,8 @@
         circleMarker,
         firma:w.firma,
         ort:w.ort,
+        plz:w.plz,
+        land:w.land,
         preis:w.preis,
         keinPreis:w.keinPreis,
         farbe:w.farbe,
@@ -376,12 +419,14 @@
       bounds.extend([c.lat,c.lon]);
     }
 
+    // Kunden (Dreiecke)
     for(const k of kunden){
-      const c = (geoCache[k.ort] && geoCache[k.ort].country_code) ? geoCache[k.ort] : await geocode(k.ort);
+      const q = geocodeQueryFromEntry(k);
+      const c = (geoCache[q] && geoCache[q].country_code) ? geoCache[q] : await geocode(q);
       if(!c) continue;
 
       const m = L.marker([c.lat,c.lon],{icon:blauesDreieck})
-        .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
+        .bindTooltip(`<b>${k.name}</b><br>${k.ort}${k.plz ? " " + k.plz : ""}${k.land ? "<br>" + k.land : ""}`,{sticky:true})
         .on("click",()=>handleMarkerClick(k.name,c));
 
       alleMarker.push({
@@ -397,6 +442,9 @@
     updateLayers();
   }
 
+  // =======================
+  // Filter / Layer
+  // =======================
   function getSelectedCountries() {
     const chks = document.querySelectorAll(".countryChk");
     const selected = [];
@@ -428,7 +476,7 @@
     const selectedCountries = getSelectedCountries();
     const noCountryFilter = selectedCountries.length === 1 && selectedCountries[0] === "all";
 
-    // Zertifikate (logik bleibt: wir prüfen weiterhin Text im Feld "zert")
+    // Zertifikate (wenn du keine Zertifikats-Spalte nutzt: "Kein Zertifikat" AN lassen)
     const en   = document.getElementById("chkEnPlus")?.checked ?? true;
     const din  = document.getElementById("chkDINplus")?.checked ?? true;
     const sure = document.getElementById("chkSURE")?.checked ?? true;
@@ -449,6 +497,7 @@
     const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
 
     for(const m of alleMarker){
+      // Kunden (Dreiecke)
       if(m.type === "kunde"){
         if (kundenFlag) {
           if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
@@ -458,10 +507,11 @@
         continue;
       }
 
+      // Produktfilter (Firmen)
       if (m.productType === "hackschnitzel" && !showHacks) continue;
       if (m.productType === "saegespaene"   && !showSaeg)  continue;
 
-      // Zertfilter
+      // Zertfilter (wenn Feld leer -> zählt als "Kein Zertifikat")
       const z = (m.zert || "");
       let zertOK = false;
       if(z.includes("enplus") && en) zertOK = true;
@@ -504,6 +554,9 @@
     }
   }
 
+  // =======================
+  // Route (bleibt gleich)
+  // =======================
   function handleMarkerClick(label,coord){
     selectedPoints.push({label,coord});
     if(selectedPoints.length===2){
@@ -513,7 +566,6 @@
     }
   }
 
-  // ROUTE (bleibt gleich)
   async function showRoute(a,b){
     const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
     const res = await fetch(url);
@@ -576,6 +628,9 @@
     map.closePopup();
   });
 
+  // =======================
+  // UI Events
+  // =======================
   document.addEventListener("change", e => {
     if (e.target && e.target.matches('input[type="checkbox"]')) {
       if (e.target.classList.contains("countryChk")) {
@@ -632,6 +687,7 @@
     });
   }
 
+  // Start
   (async ()=>{
     await ladeDaten();
     await buildMap();
