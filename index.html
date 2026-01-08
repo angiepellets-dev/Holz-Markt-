@@ -224,11 +224,6 @@
     if (s.includes("sägespäne") || s.includes("saegespaene") || s.includes("sägespaene") || s.includes("saegespäne")) return "saegespaene";
     return "";
   }
-  function prettyProduktName(key){
-    if (key === "hackschnitzel") return "Hackschnitzel";
-    if (key === "saegespaene") return "Sägespäne";
-    return key;
-  }
 
   // Aktiver Preis (nur intern)
   function activePriceForFirma(w){
@@ -243,8 +238,7 @@
     if (showSaeg  && isFinite(pS) && pS > 0) list.push(pS);
 
     if (!list.length) return { price: 0, keinPreis: true };
-    const price = Math.min(...list);
-    return { price, keinPreis: false };
+    return { price: Math.min(...list), keinPreis: false };
   }
 
   // =======================
@@ -266,11 +260,12 @@
 
     return rows.map(x => {
       const prices = {};
-
       const pairs = Math.max(produktKeys.length, preisKeys.length);
+
       for (let i=0; i<pairs; i++){
         const pKey = produktKeys[i];
         const rKey = preisKeys[i];
+
         const prodRaw = pKey ? (x?.[pKey] || "").toString().trim() : "";
         const priceRaw = rKey ? (x?.[rKey] ?? "").toString() : "";
 
@@ -314,19 +309,19 @@
   }
 
   // =======================
-  // Tooltip (nur Preise, kein "Aktiver Preis")
+  // Tooltip Firma
   // =======================
   function tooltipHtmlFirma(m){
     const landInfo = m.land ? `<br><b>Land:</b> ${m.land}` : "";
-    const lines = [];
 
     const pH = m.prices?.hackschnitzel;
     const pS = m.prices?.saegespaene;
 
-    if (pH !== undefined) lines.push(`<b>Hackschnitzel:</b> ${isFinite(pH) && pH>0 ? pH.toFixed(2)+" €" : "–"}`);
-    if (pS !== undefined) lines.push(`<b>Sägespäne:</b> ${isFinite(pS) && pS>0 ? pS.toFixed(2)+" €" : "–"}`);
+    const lineH = (pH !== undefined) ? `<b>Hackschnitzel:</b> ${isFinite(pH) && pH>0 ? pH.toFixed(2)+" €" : "–"}` : "";
+    const lineS = (pS !== undefined) ? `<b>Sägespäne:</b> ${isFinite(pS) && pS>0 ? pS.toFixed(2)+" €" : "–"}` : "";
 
-    return `<b>${m.firma}</b><br>${m.ort}${m.plz ? " " + m.plz : ""}${landInfo}<br>${lines.join("<br>")}`;
+    const lines = [lineH, lineS].filter(Boolean).join("<br>");
+    return `<b>${m.firma}</b><br>${m.ort}${m.plz ? " " + m.plz : ""}${landInfo}${lines ? "<br>"+lines : ""}`;
   }
 
   // =======================
@@ -376,11 +371,7 @@
         fillOpacity:0.85
       });
 
-      circle.bindTooltip("", {sticky:true})
-        .on("tooltipopen", ()=> circle.getTooltip().setContent(tooltipHtmlFirma(w)))
-        .on("click",()=>handleMarkerClick(w.firma,c));
-
-      alleMarker.push({
+      const markerObj = {
         type:"firma",
         marker: circle,
         firma:w.firma,
@@ -390,8 +381,13 @@
         zert:(w.zert||"").toLowerCase(),
         country_code:(c.country_code||""),
         prices: w.prices || {}
-      });
+      };
 
+      circle.bindTooltip("", {sticky:true})
+        .on("tooltipopen", ()=> circle.getTooltip().setContent(tooltipHtmlFirma(markerObj)))
+        .on("click",()=>handleMarkerClick(markerObj.firma,c));
+
+      alleMarker.push(markerObj);
       bounds.extend([c.lat,c.lon]);
     }
 
@@ -426,6 +422,7 @@
   function updateCountryButtonLabel() {
     const btn = document.getElementById("countryDropdownBtn");
     if (!btn) return;
+
     const selected = getSelectedCountries();
     if (selected.length === 1 && selected[0] === "all") btn.textContent = "Alle Länder";
     else {
@@ -521,7 +518,7 @@
   }
 
   // =======================
-  // ROUTE
+  // ROUTE + NEUE BERECHNUNG + beide Produkte ausgeben
   // =======================
   function handleMarkerClick(label,coord){
     selectedPoints.push({label,coord});
@@ -550,17 +547,43 @@
     const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
     const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
 
+    // Welche Firma ist beteiligt? (falls Start oder Ziel eine Firma ist)
     const firmaObjA = alleMarker.find(m => m.type==="firma" && m.firma === a.label);
     const firmaObjB = alleMarker.find(m => m.type==="firma" && m.firma === b.label);
     const firmeneintrag = firmaObjA || firmaObjB;
 
-    const ap = firmeneintrag ? activePriceForFirma(firmeneintrag) : {price:0, keinPreis:true};
-    const firmenPreis = ap.keinPreis ? 0 : ap.price;
+    // === Deine Formel-Parameter ===
+    const G = 90;
+    const J = 90;
+    const K = 1.05;
 
-    const preisProKm = distKm < 250 ? 2.15 : 1.85;
-    const teilstrecke = distKm / 24;
-    const berechnung = teilstrecke * preisProKm;
-    const gesamt = (berechnung + (firmenPreis||0)) * 1.05;
+    // km-Satz nach Schwelle: <=200 => 2,15 ; >200 => 1,85
+    const kmSatz = (distKm > 200) ? 1.85 : 2.15;
+
+    // Hilfsfunktion: Formel exakt wie Excel
+    function totalForPrice(F){
+      const f = isFinite(F) && F > 0 ? F : 0;
+      return (((f * G) / G) + ((kmSatz * distKm) / J)) * K;
+    }
+
+    // Preise aus Firma holen
+    const preisH = firmeneintrag?.prices?.hackschnitzel;
+    const preisS = firmeneintrag?.prices?.saegespaene;
+
+    const totalH = (preisH !== undefined) ? totalForPrice(preisH) : null;
+    const totalS = (preisS !== undefined) ? totalForPrice(preisS) : null;
+
+    // Für Anzeige im Popup
+    const lineH = (preisH !== undefined)
+      ? `<b>Hackschnitzel</b><br>Werkpreis: ${isFinite(preisH) && preisH>0 ? preisH.toFixed(2)+" €" : "–"}<br>Gesamt: <b>${totalH.toFixed(2)} €</b>`
+      : `<b>Hackschnitzel</b><br>Werkpreis: –<br>Gesamt: –`;
+
+    const lineS = (preisS !== undefined)
+      ? `<b>Sägespäne</b><br>Werkpreis: ${isFinite(preisS) && preisS>0 ? preisS.toFixed(2)+" €" : "–"}<br>Gesamt: <b>${totalS.toFixed(2)} €</b>`
+      : `<b>Sägespäne</b><br>Werkpreis: –<br>Gesamt: –`;
+
+    // Fallback wenn keine Firma beteiligt -> nur Transportanteil (F=0)
+    const totalTransportOnly = totalForPrice(0);
 
     if(routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
@@ -570,8 +593,14 @@
       <b>Route:</b> ${a.label} ↔ ${b.label}<br>
       <b>Entfernung:</b> ${dist} km<br>
       <b>Dauer:</b> ${durationStr}<br>
-      <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-      <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt.toFixed(2)} €</span>
+      <b>km-Satz:</b> ${kmSatz.toFixed(2)} €<br>
+      <hr style="border:none;height:1px;background:#eee;margin:8px 0;">
+      ${firmeneintrag ? `
+        ${lineH}<br><br>${lineS}
+      ` : `
+        <b>Hinweis:</b> Keine Firma ausgewählt – nur Transportanteil.<br>
+        <b>Transport gesamt:</b> <span style="color:green;font-size:1.05em">${totalTransportOnly.toFixed(2)} €</span>
+      `}
     `).openOn(map);
 
     map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
@@ -592,7 +621,7 @@
   });
 
   // =======================
-  // Suche
+  // Suche (Marker oder Ort)
   // =======================
   async function searchOrGeocode(query){
     const hit = alleMarker.find(m =>
