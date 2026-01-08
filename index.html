@@ -65,27 +65,28 @@
 
   <b style="display:block;margin-top:8px;">Land / Länder filtern</b>
   <div class="country-dropdown" id="countryDropdown">
-   <div class="country-dropdown-menu" id="countryDropdownMenu">
-  <label><input type="checkbox" class="countryChk" value="all" checked> Alle</label>
+    <div class="country-dropdown-button" id="countryDropdownBtn">Alle Länder</div>
+    <div class="country-dropdown-menu" id="countryDropdownMenu">
+      <label><input type="checkbox" class="countryChk" value="all" checked> Alle</label>
 
-  <label><input type="checkbox" class="countryChk" value="be"> Belgien</label>
-  <label><input type="checkbox" class="countryChk" value="dk"> Dänemark</label>
-  <label><input type="checkbox" class="countryChk" value="de"> Deutschland</label>
-  <label><input type="checkbox" class="countryChk" value="ee"> Estland</label>
-  <label><input type="checkbox" class="countryChk" value="fi"> Finnland</label>
-  <label><input type="checkbox" class="countryChk" value="fr"> Frankreich</label>
-  <label><input type="checkbox" class="countryChk" value="it"> Italien</label>
-  <label><input type="checkbox" class="countryChk" value="lv"> Lettland</label>
-  <label><input type="checkbox" class="countryChk" value="lt"> Litauen</label>
-  <label><input type="checkbox" class="countryChk" value="nl"> Niederlande</label>
-  <label><input type="checkbox" class="countryChk" value="at"> Österreich</label>
-  <label><input type="checkbox" class="countryChk" value="pl"> Polen</label>
-  <label><input type="checkbox" class="countryChk" value="se"> Schweden</label>
-  <label><input type="checkbox" class="countryChk" value="ch"> Schweiz</label>
-  <label><input type="checkbox" class="countryChk" value="sk"> Slowakei</label>
-  <label><input type="checkbox" class="countryChk" value="cz"> Tschechien</label>
-  <label><input type="checkbox" class="countryChk" value="gb"> United Kingdom</label>
-</div>
+      <label><input type="checkbox" class="countryChk" value="be"> Belgien</label>
+      <label><input type="checkbox" class="countryChk" value="dk"> Dänemark</label>
+      <label><input type="checkbox" class="countryChk" value="de"> Deutschland</label>
+      <label><input type="checkbox" class="countryChk" value="ee"> Estland</label>
+      <label><input type="checkbox" class="countryChk" value="fi"> Finnland</label>
+      <label><input type="checkbox" class="countryChk" value="fr"> Frankreich</label>
+      <label><input type="checkbox" class="countryChk" value="it"> Italien</label>
+      <label><input type="checkbox" class="countryChk" value="lv"> Lettland</label>
+      <label><input type="checkbox" class="countryChk" value="lt"> Litauen</label>
+      <label><input type="checkbox" class="countryChk" value="nl"> Niederlande</label>
+      <label><input type="checkbox" class="countryChk" value="at"> Österreich</label>
+      <label><input type="checkbox" class="countryChk" value="pl"> Polen</label>
+      <label><input type="checkbox" class="countryChk" value="se"> Schweden</label>
+      <label><input type="checkbox" class="countryChk" value="ch"> Schweiz</label>
+      <label><input type="checkbox" class="countryChk" value="sk"> Slowakei</label>
+      <label><input type="checkbox" class="countryChk" value="cz"> Tschechien</label>
+      <label><input type="checkbox" class="countryChk" value="gb"> United Kingdom</label>
+    </div>
   </div>
 </div>
 
@@ -115,7 +116,7 @@
 
 <script>
   // =======================
-  // Karte + mehr Zoom
+  // Karte
   // =======================
   const map = L.map("map", { maxZoom: 19 }).setView([51, 11], 5);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -131,7 +132,7 @@
   }
 
   // =======================
-  // GeoCache + Geocode (parallel + cache)
+  // GeoCache + Geocode
   // =======================
   const GEO_CACHE_KEY = "geoCacheProdukte_EU_v3";
   const geoCache = JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}");
@@ -215,7 +216,7 @@
   }
 
   // =======================
-  // Helfer: Produkt-Namen normalisieren
+  // Produkt Helfer
   // =======================
   function normProduktName(p){
     const s = (p || "").toLowerCase();
@@ -229,7 +230,7 @@
     return key;
   }
 
-  // Aktiver Preis je Firma abhängig von Checkboxen (nur intern für Farbe/Route)
+  // Aktiver Preis (nur intern)
   function activePriceForFirma(w){
     const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
     const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
@@ -247,7 +248,7 @@
   }
 
   // =======================
-  // Parser (2x produkt/preis)
+  // Parser Firmen (2× Produkt / Preis)
   // =======================
   function parseFirmen(rows){
     const lc = (s)=>String(s||"").toLowerCase().trim();
@@ -313,23 +314,17 @@
   }
 
   // =======================
-  // Tooltip (ohne Aktiver Preis)
+  // Tooltip (nur Preise, kein "Aktiver Preis")
   // =======================
   function tooltipHtmlFirma(m){
     const landInfo = m.land ? `<br><b>Land:</b> ${m.land}` : "";
-
     const lines = [];
+
     const pH = m.prices?.hackschnitzel;
     const pS = m.prices?.saegespaene;
 
     if (pH !== undefined) lines.push(`<b>Hackschnitzel:</b> ${isFinite(pH) && pH>0 ? pH.toFixed(2)+" €" : "–"}`);
     if (pS !== undefined) lines.push(`<b>Sägespäne:</b> ${isFinite(pS) && pS>0 ? pS.toFixed(2)+" €" : "–"}`);
-
-    const others = Object.keys(m.prices||{}).filter(k => k!=="hackschnitzel" && k!=="saegespaene");
-    for (const k of others){
-      const v = m.prices[k];
-      lines.push(`<b>${prettyProduktName(k)}:</b> ${isFinite(v) && v>0 ? v.toFixed(2)+" €" : "–"}`);
-    }
 
     return `<b>${m.firma}</b><br>${m.ort}${m.plz ? " " + m.plz : ""}${landInfo}<br>${lines.join("<br>")}`;
   }
@@ -358,7 +353,6 @@
       loadCsvAsObjects(sheetUrlFirmen),
       loadCsvAsObjects(sheetUrlKunden)
     ]);
-
     werke = parseFirmen(firmenRows);
     kunden = parseKunden(kundenRows);
   }
@@ -382,7 +376,11 @@
         fillOpacity:0.85
       });
 
-      const markerObj = {
+      circle.bindTooltip("", {sticky:true})
+        .on("tooltipopen", ()=> circle.getTooltip().setContent(tooltipHtmlFirma(w)))
+        .on("click",()=>handleMarkerClick(w.firma,c));
+
+      alleMarker.push({
         type:"firma",
         marker: circle,
         firma:w.firma,
@@ -392,13 +390,8 @@
         zert:(w.zert||"").toLowerCase(),
         country_code:(c.country_code||""),
         prices: w.prices || {}
-      };
+      });
 
-      circle.bindTooltip("", {sticky:true})
-        .on("tooltipopen", ()=> circle.getTooltip().setContent(tooltipHtmlFirma(markerObj)))
-        .on("click",()=>handleMarkerClick(w.firma,c));
-
-      alleMarker.push(markerObj);
       bounds.extend([c.lat,c.lon]);
     }
 
@@ -433,13 +426,14 @@
   function updateCountryButtonLabel() {
     const btn = document.getElementById("countryDropdownBtn");
     if (!btn) return;
-
     const selected = getSelectedCountries();
     if (selected.length === 1 && selected[0] === "all") btn.textContent = "Alle Länder";
     else {
-      const names = { de:"DE", at:"AT", pl:"PL", cz:"CZ", fr:"FR", ch:"CH", be:"BE", sk:"SK",
-  dk:"DK", ee:"EE", fi:"FI", it:"IT", lv:"LV", lt:"LT", nl:"NL", se:"SE", gb:"GB"};
-    btn.textContent = selected.map(c => names[c] || c.toUpperCase()).join(", ");
+      const names = {
+        de:"DE", at:"AT", pl:"PL", cz:"CZ", fr:"FR", ch:"CH", be:"BE", sk:"SK",
+        dk:"DK", ee:"EE", fi:"FI", it:"IT", lv:"LV", lt:"LT", nl:"NL", se:"SE", gb:"GB"
+      };
+      btn.textContent = selected.map(c => names[c] || c.toUpperCase()).join(", ");
     }
   }
 
@@ -479,9 +473,8 @@
 
       const pH = m.prices?.hackschnitzel;
       const pS = m.prices?.saegespaene;
-
-      const hasH = isFinite(pH) ? true : (pH !== undefined);
-      const hasS = isFinite(pS) ? true : (pS !== undefined);
+      const hasH = pH !== undefined;
+      const hasS = pS !== undefined;
 
       if (!showHacks && !showSaeg) continue;
       if (showHacks && !showSaeg && !hasH) continue;
@@ -528,7 +521,7 @@
   }
 
   // =======================
-  // ROUTE (ohne "Aktiver Werkspreis")
+  // ROUTE
   // =======================
   function handleMarkerClick(label,coord){
     selectedPoints.push({label,coord});
@@ -599,7 +592,7 @@
   });
 
   // =======================
-  // Suche kann auch freie Orte geocodieren
+  // Suche
   // =======================
   async function searchOrGeocode(query){
     const hit = alleMarker.find(m =>
