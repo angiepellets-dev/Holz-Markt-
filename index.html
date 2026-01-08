@@ -15,7 +15,8 @@
 
     .legend, .cert-box{
       position:absolute;background:#fff;padding:8px 10px;border-radius:6px;
-      box-shadow:0 2px 8px rgba(0,0,0,.12);font:14px/1.3 system-ui,Arial,sans-serif;
+      box-shadow:0 2px 8px rgba(0,0,0,.12);
+      font:14px/1.3 system-ui,Arial,sans-serif;
     }
     .cert-box{bottom:12px;left:12px;z-index:1000;}
     .legend{bottom:12px;right:12px;min-width:180px;z-index:3000;}
@@ -116,6 +117,7 @@
 </div>
 
 <script>
+  // Karte
   const map = L.map("map", { maxZoom: 19 }).setView([51, 11], 5);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     minZoom: 4, maxZoom: 19, attribution: "&copy; OpenStreetMap"
@@ -207,7 +209,7 @@
     return (parsed.data || []).filter(r => r && Object.keys(r).length);
   }
 
-  // Produkt-Keys normalisieren (NEU: Siebmaterial)
+  // Produkt normalisieren
   function normProduktName(p){
     const s = (p || "").toLowerCase();
     if (s.includes("hackschnitzel")) return "hackschnitzel";
@@ -216,7 +218,7 @@
     return "";
   }
 
-  // aktiver Preis (für Marker-Farbe)
+  // Markerfarbe = günstigster aktiver Preis
   function activePriceForFirma(w){
     const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
     const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
@@ -246,7 +248,6 @@
     const landKey  = findKey(["land","country"]) || "land";
     const zertKey  = keys.find(k => ["zertifikate","zertifikat","zert","cert"].includes(lc(k)));
 
-    // nimmt automatisch produkt / produkt_2 / produkt_3 ... (auch Spalte I)
     const produktKeys = keys.filter(k => lc(k).startsWith("produkt"));
     const preisKeys   = keys.filter(k => lc(k).startsWith("preis"));
 
@@ -310,7 +311,6 @@
     const lineM = (pM !== undefined) ? `<b>Siebmaterial:</b> ${isFinite(pM) && pM>0 ? pM.toFixed(2)+" €" : "–"}` : "";
 
     const lines = [lineH,lineS,lineM].filter(Boolean).join("<br>");
-
     return `<b>${m.firma}</b><br>${place}${landInfo}${lines ? "<br>"+lines : ""}`;
   }
 
@@ -448,27 +448,16 @@
     for(const m of alleMarker){
       if(m.type === "kunde"){
         if (kundenFlag) {
-          if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) {
-            map.addLayer(m.marker);
-          }
+          if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) map.addLayer(m.marker);
         }
         continue;
       }
 
-      const pH = m.prices?.hackschnitzel;
-      const pS = m.prices?.saegespaene;
-      const pM = m.prices?.siebmaterial;
-
-      const hasH = pH !== undefined;
-      const hasS = pS !== undefined;
-      const hasM = pM !== undefined;
+      const hasH = m.prices?.hackschnitzel !== undefined;
+      const hasS = m.prices?.saegespaene !== undefined;
+      const hasM = m.prices?.siebmaterial !== undefined;
 
       if (!showHacks && !showSaeg && !showSieb) continue;
-      if (showHacks && !hasH && !showSaeg && !showSieb) continue;
-      if (showSaeg  && !hasS && !showHacks && !showSieb) continue;
-      if (showSieb  && !hasM && !showHacks && !showSaeg) continue;
-
-      // Wenn mehrere aktiv sind: mindestens eins muss vorhanden sein
       if ((showHacks || showSaeg || showSieb) && !(
         (showHacks && hasH) || (showSaeg && hasS) || (showSieb && hasM)
       )) continue;
@@ -501,18 +490,14 @@
       if(isGrau && grau) sichtbar = true;
       if(!sichtbar) continue;
 
-      if (m.marker && m.marker.setStyle) {
-        m.marker.setStyle({ color: aktiveFarbe, fillColor: aktiveFarbe });
-      }
-      if (m.marker && m.marker.getTooltip) {
-        m.marker.getTooltip().setContent( tooltipHtmlFirma(m) );
-      }
+      if (m.marker && m.marker.setStyle) m.marker.setStyle({ color: aktiveFarbe, fillColor: aktiveFarbe });
+      if (m.marker && m.marker.getTooltip) m.marker.getTooltip().setContent( tooltipHtmlFirma(m) );
 
       map.addLayer(m.marker);
     }
   }
 
-  // Route + Berechnung + alle Produkte im Popup
+  // ROUTE + Siebmaterial-Rechnung (richtige Formel)
   function handleMarkerClick(label,coord){
     selectedPoints.push({label,coord});
     if(selectedPoints.length===2){
@@ -533,7 +518,7 @@
 
     const route = data.routes[0];
     const distKm = route.distance / 1000;
-    const dist = distKm.toFixed(1);
+    const distTxt = distKm.toFixed(1);
     const durationMin = route.duration / 60;
     const hours = Math.floor(durationMin/60);
     const minutes = Math.round(durationMin%60);
@@ -544,51 +529,60 @@
     const firmaObjB = alleMarker.find(m => m.type==="firma" && m.firma === b.label);
     const firmeneintrag = firmaObjA || firmaObjB;
 
-    const G = 90, J = 90, K = 1.05;
-    const kmSatz = (distKm > 200) ? 1.85 : 2.15;
-
-    function totalForPrice(F){
-      const f = isFinite(F) && F > 0 ? F : 0;
-      return (((f * G) / G) + ((kmSatz * distKm) / J)) * K;
-    }
-
+    // Werkpreise
     const preisH = firmeneintrag?.prices?.hackschnitzel;
     const preisS = firmeneintrag?.prices?.saegespaene;
     const preisM = firmeneintrag?.prices?.siebmaterial;
 
-    const totalH = (preisH !== undefined) ? totalForPrice(preisH) : null;
-    const totalS = (preisS !== undefined) ? totalForPrice(preisS) : null;
-    const totalM = (preisM !== undefined) ? totalForPrice(preisM) : null;
+    // ✅ Siebmaterial-Formel (aus deinem Screenshot)
+    // Gesamt = (((EK*TONNE) + (KMSATZ*KM)) / ATRO) * MARGE
+    const TONNE = 21.50;
+    const KMSATZ_SIEB = 1.85;
+    const ATRO = 11.8;
+    const MARGE = 1.05;
 
-    const lineH = (preisH !== undefined)
-      ? `<b>Hackschnitzel</b><br>Werkpreis: ${isFinite(preisH) && preisH>0 ? preisH.toFixed(2)+" €" : "–"}<br>Gesamt: <b>${totalH.toFixed(2)} €</b>`
-      : `<b>Hackschnitzel</b><br>Werkpreis: –<br>Gesamt: –`;
+    function siebGesamt(ek, km){
+      const EK = (isFinite(ek) && ek > 0) ? ek : 0;
+      const KM = (isFinite(km) && km > 0) ? km : 0;
+      return ((((EK * TONNE) + (KMSATZ_SIEB * KM)) / ATRO) * MARGE);
+    }
 
-    const lineS = (preisS !== undefined)
-      ? `<b>Sägespäne</b><br>Werkpreis: ${isFinite(preisS) && preisS>0 ? preisS.toFixed(2)+" €" : "–"}<br>Gesamt: <b>${totalS.toFixed(2)} €</b>`
-      : `<b>Sägespäne</b><br>Werkpreis: –<br>Gesamt: –`;
-
-    const lineM = (preisM !== undefined)
-      ? `<b>Siebmaterial</b><br>Werkpreis: ${isFinite(preisM) && preisM>0 ? preisM.toFixed(2)+" €" : "–"}<br>Gesamt: <b>${totalM.toFixed(2)} €</b>`
-      : `<b>Siebmaterial</b><br>Werkpreis: –<br>Gesamt: –`;
-
-    const totalTransportOnly = totalForPrice(0);
+    const totalSieb = (preisM !== undefined && isFinite(preisM) && preisM > 0)
+      ? siebGesamt(preisM, distKm)
+      : null;
 
     if(routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
 
     const mid = coords[Math.floor(coords.length/2)];
+
+    const lineH = `<b>Hackschnitzel:</b> ${preisH !== undefined && isFinite(preisH) && preisH>0 ? preisH.toFixed(2)+" €" : "–"}`;
+    const lineS = `<b>Sägespäne:</b> ${preisS !== undefined && isFinite(preisS) && preisS>0 ? preisS.toFixed(2)+" €" : "–"}`;
+
+    const lineM = (preisM !== undefined)
+      ? `<b>Siebmaterial:</b> ${isFinite(preisM) && preisM>0 ? preisM.toFixed(2)+" €" : "–"}`
+      : `<b>Siebmaterial:</b> –`;
+
+    const lineMGes = (totalSieb !== null)
+      ? `<b>Siebmaterial Gesamt:</b> <span style="color:green;font-size:1.05em">${totalSieb.toFixed(2)} €</span>`
+      : `<b>Siebmaterial Gesamt:</b> –`;
+
     L.popup().setLatLng(mid).setContent(`
       <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-      <b>Entfernung:</b> ${dist} km<br>
+      <b>Entfernung:</b> ${distTxt} km<br>
       <b>Dauer:</b> ${durationStr}<br>
-      <b>km-Satz:</b> ${kmSatz.toFixed(2)} €<br>
       <hr style="border:none;height:1px;background:#eee;margin:8px 0;">
       ${firmeneintrag ? `
-        ${lineH}<br><br>${lineS}<br><br>${lineM}
+        ${lineH}<br>
+        ${lineS}<br>
+        ${lineM}<br>
+        ${lineMGes}<br>
+        <hr style="border:none;height:1px;background:#eee;margin:8px 0;">
+        <small>
+          Siebmaterial-Formel: (((EK*21,50)+(1,85*km))/11,8)*1,05
+        </small>
       ` : `
-        <b>Hinweis:</b> Keine Firma ausgewählt – nur Transportanteil.<br>
-        <b>Transport gesamt:</b> <span style="color:green;font-size:1.05em">${totalTransportOnly.toFixed(2)} €</span>
+        <b>Hinweis:</b> Keine Firma ausgewählt – keine Werkpreise verfügbar.
       `}
     `).openOn(map);
 
@@ -607,6 +601,7 @@
     map.closePopup();
   });
 
+  // Suche kann auch freie Orte geocodieren
   async function searchOrGeocode(query){
     const hit = alleMarker.find(m =>
       m.marker &&
@@ -636,6 +631,7 @@
     handleMarkerClick(`Ort: ${query}`, c);
   }
 
+  // UI Events
   document.addEventListener("change", e => {
     if (e.target && e.target.matches('input[type="checkbox"]')) {
       if (e.target.classList.contains("countryChk")) {
