@@ -220,7 +220,7 @@
     return key;
   }
 
-  // Aktiver Preis je Firma abhängig von Checkboxen
+  // Aktiver Preis je Firma abhängig von Checkboxen (nur intern für Farbe/Route)
   function activePriceForFirma(w){
     const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
     const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
@@ -233,12 +233,12 @@
     if (showSaeg  && isFinite(pS) && pS > 0) list.push(pS);
 
     if (!list.length) return { price: 0, keinPreis: true };
-    const price = Math.min(...list); // bei beiden: günstigster
+    const price = Math.min(...list);
     return { price, keinPreis: false };
   }
 
   // =======================
-  // Parser (NEU für 2x produkt/preis)
+  // Parser (2x produkt/preis)
   // =======================
   function parseFirmen(rows){
     const lc = (s)=>String(s||"").toLowerCase().trim();
@@ -249,14 +249,13 @@
     const ortKey   = findKey(["ort","stadt","location","standort","adresse"]) || "ort";
     const plzKey   = findKey(["plz","zip","postcode","postleitzahl"]) || "plz";
     const landKey  = findKey(["land","country"]) || "land";
-    const zertKey  = keys.find(k => ["zertifikate","zertifikat","zert","cert"].includes(lc(k))); // optional
+    const zertKey  = keys.find(k => ["zertifikate","zertifikat","zert","cert"].includes(lc(k)));
 
-    // Alle Produkt/Preis-Spalten sammeln (produkt, produkt_2, produkt 2 ... / preis, preis_2, ...)
     const produktKeys = keys.filter(k => lc(k).startsWith("produkt"));
     const preisKeys   = keys.filter(k => lc(k).startsWith("preis"));
 
     return rows.map(x => {
-      const prices = {}; // { hackschnitzel: 123, saegespaene: 45 }
+      const prices = {};
 
       const pairs = Math.max(produktKeys.length, preisKeys.length);
       for (let i=0; i<pairs; i++){
@@ -271,21 +270,16 @@
         if (prodNorm && isFinite(priceVal) && priceVal > 0) {
           prices[prodNorm] = priceVal;
         } else if (prodNorm && !(prodNorm in prices)) {
-          // Produkt steht drin, aber Preis leer/0 -> merken wir als "kein Preis" über activePriceForFirma später
           prices[prodNorm] = 0;
         }
       }
 
-      // Falls du zusätzlich noch eine einzelne "produkt"-Spalte irgendwo hast, bleibt es trotzdem ok.
-      // Optional: Originaltext für Tooltip
-      const produktText = produktKeys.map(k => (x?.[k]||"").toString().trim()).filter(Boolean).join(", ");
       return {
         firma: (x[firmaKey]||"").toString().trim(),
         ort: (x[ortKey]||"").toString().trim(),
         plz: (x[plzKey]||"").toString().trim(),
         land:(x[landKey]||"").toString().trim(),
-        produkt: produktText,                 // nur Anzeige
-        prices,                               // WICHTIG: Preise pro Produkt
+        prices,
         zert: zertKey ? (x?.[zertKey]||"").toString().trim() : ""
       };
     }).filter(w => w.firma && w.ort);
@@ -310,7 +304,7 @@
   }
 
   // =======================
-  // Tooltip (zeigt beide Preise)
+  // Tooltip (ohne Aktiver Preis)
   // =======================
   function tooltipHtmlFirma(m){
     const landInfo = m.land ? `<br><b>Land:</b> ${m.land}` : "";
@@ -322,20 +316,13 @@
     if (pH !== undefined) lines.push(`<b>Hackschnitzel:</b> ${isFinite(pH) && pH>0 ? pH.toFixed(2)+" €" : "–"}`);
     if (pS !== undefined) lines.push(`<b>Sägespäne:</b> ${isFinite(pS) && pS>0 ? pS.toFixed(2)+" €" : "–"}`);
 
-    // falls jemand noch was anderes reinschreibt:
     const others = Object.keys(m.prices||{}).filter(k => k!=="hackschnitzel" && k!=="saegespaene");
     for (const k of others){
       const v = m.prices[k];
       lines.push(`<b>${prettyProduktName(k)}:</b> ${isFinite(v) && v>0 ? v.toFixed(2)+" €" : "–"}`);
     }
 
-    // aktiver Preis (für "oben")
-    const a = activePriceForFirma(m);
-    const activeTxt = a.keinPreis ? "–" : `${a.price.toFixed(2)} €`;
-
-    return `<b>${m.firma}</b><br>${m.ort}${m.plz ? " " + m.plz : ""}${landInfo}
-            <br><b>Aktiver Preis:</b> ${activeTxt}
-            <br>${lines.join("<br>")}`;
+    return `<b>${m.firma}</b><br>${m.ort}${m.plz ? " " + m.plz : ""}${landInfo}<br>${lines.join("<br>")}`;
   }
 
   // =======================
@@ -371,13 +358,11 @@
     alleMarker = [];
     const bounds = L.latLngBounds();
 
-    // Firmen parallel geocoden
     const firmGeo = await Promise.all(werke.map(async (w)=>({ w, c: await geocodeWithFallback(buildQueries(w)) })));
     for (const item of firmGeo){
       if(!item.c) continue;
       const { w, c } = item;
 
-      // Markerfarbe nach aktueller Auswahl (bei Start: beide aktiv -> günstigster)
       const ap = activePriceForFirma(w);
       const initColor = colorForPrice(ap.price, ap.keinPreis);
 
@@ -388,11 +373,7 @@
         fillOpacity:0.85
       });
 
-      circle.bindTooltip("", {sticky:true})
-        .on("tooltipopen", ()=> circle.getTooltip().setContent(tooltipHtmlFirma(w)))
-        .on("click",()=>handleMarkerClick(w.firma,c));
-
-      alleMarker.push({
+      const markerObj = {
         type:"firma",
         marker: circle,
         firma:w.firma,
@@ -401,13 +382,17 @@
         land:w.land,
         zert:(w.zert||"").toLowerCase(),
         country_code:(c.country_code||""),
-        prices: w.prices || {},   // ✅ neu
-      });
+        prices: w.prices || {}
+      };
 
+      circle.bindTooltip("", {sticky:true})
+        .on("tooltipopen", ()=> circle.getTooltip().setContent(tooltipHtmlFirma(markerObj)))
+        .on("click",()=>handleMarkerClick(w.firma,c));
+
+      alleMarker.push(markerObj);
       bounds.extend([c.lat,c.lon]);
     }
 
-    // Kunden parallel geocoden
     const kundGeo = await Promise.all(kunden.map(async (k)=>({ k, c: await geocodeWithFallback(buildQueries(k)) })));
     for (const item of kundGeo){
       if(!item.c) continue;
@@ -482,11 +467,10 @@
         continue;
       }
 
-      // ✅ Produktlogik: Firma nur anzeigen, wenn mind. ein ausgewähltes Produkt vorhanden ist
       const pH = m.prices?.hackschnitzel;
       const pS = m.prices?.saegespaene;
 
-      const hasH = isFinite(pH) ? true : (pH !== undefined); // auch 0 gilt als "existiert"
+      const hasH = isFinite(pH) ? true : (pH !== undefined);
       const hasS = isFinite(pS) ? true : (pS !== undefined);
 
       if (!showHacks && !showSaeg) continue;
@@ -507,7 +491,6 @@
         if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
       }
 
-      // ✅ Farbe nach aktivem Preis setzen (bei beiden: günstigster)
       const ap = activePriceForFirma(m);
       const aktiveFarbe = colorForPrice(ap.price, ap.keinPreis);
 
@@ -523,7 +506,6 @@
       if(isGrau && grau) sichtbar = true;
       if(!sichtbar) continue;
 
-      // Markerstyle + Tooltip aktualisieren
       if (m.marker && m.marker.setStyle) {
         m.marker.setStyle({ color: aktiveFarbe, fillColor: aktiveFarbe });
       }
@@ -536,7 +518,7 @@
   }
 
   // =======================
-  // ROUTE (wie gehabt, aber Preis aus aktuellem Produkt)
+  // ROUTE (ohne "Aktiver Werkspreis")
   // =======================
   function handleMarkerClick(label,coord){
     selectedPoints.push({label,coord});
@@ -565,7 +547,6 @@
     const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
     const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
 
-    // ✅ Firmenpreis: wenn Start/Ziel eine Firma ist -> aktiver Preis
     const firmaObjA = alleMarker.find(m => m.type==="firma" && m.firma === a.label);
     const firmaObjB = alleMarker.find(m => m.type==="firma" && m.firma === b.label);
     const firmeneintrag = firmaObjA || firmaObjB;
@@ -587,7 +568,6 @@
       <b>Entfernung:</b> ${dist} km<br>
       <b>Dauer:</b> ${durationStr}<br>
       <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
-      <b>Aktiver Werkspreis:</b> ${(firmenPreis||0).toFixed(2)} €<br>
       <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt.toFixed(2)} €</span>
     `).openOn(map);
 
