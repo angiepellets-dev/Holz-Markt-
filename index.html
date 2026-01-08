@@ -232,7 +232,7 @@
       ort: (x[ortKey]||"").toString().trim(),
       plz: (x[plzKey]||"").toString().trim(),
       land: (x[landKey]||"").toString().trim(),
-      produkt: (x[produktKey]||"").toString().trim(),
+      produkt: (x[produktKey]||"").toString().trim(),   // kann jetzt "Hackschnitzel, Sägespäne" sein
       preis: parseFloat(String(x?.[preisKey] ?? "0").replace(",", ".")),
       zert: zertKey ? (x?.[zertKey]||"").toString().trim() : ""
     })).filter(w => w.firma && w.ort);
@@ -266,20 +266,33 @@
     });
   }
 
-  function datasetFromProdukt(p){
-    const s = (p || "").toLowerCase();
-    if (s.includes("sägespäne") || s.includes("saegespaene") || s.includes("sägespaene")) return "saegespaene";
-    if (s.includes("hackschnitzel")) return "hackschnitzel";
-    return "hackschnitzel";
-  }
-
-  // Tooltip
+  // Tooltip: zeigt jetzt bei "Hackschnitzel, Sägespäne" auch beides an
   function tooltipHtmlFirma(m){
     const preisTxt = (isFinite(m.preis) && m.preis > 0) ? `${m.preis.toFixed(2)} €` : "–";
     const landInfo = m.land ? `<br><b>Land:</b> ${m.land}` : "";
-    const produktTxt = (m.dataset === "saegespaene")
-      ? "<br><b>Produkt:</b> Sägespäne"
-      : "<br><b>Produkt:</b> Hackschnitzel";
+
+    const prodRaw = (m.produkt || "");
+    const prod = prodRaw.toLowerCase();
+
+    const hasHacks = prod.includes("hackschnitzel");
+    const hasSaeg  = prod.includes("sägespäne") || prod.includes("saegespaene") || prod.includes("sägespaene");
+
+    let prodText = prodRaw.trim();
+    if (!prodText) {
+      // fallback falls leer
+      const parts = [];
+      if (hasHacks) parts.push("Hackschnitzel");
+      if (hasSaeg) parts.push("Sägespäne");
+      prodText = parts.join(", ");
+    } else {
+      // Optional hübsch normalisieren, wenn beide drin sind
+      if (hasHacks && hasSaeg) prodText = "Hackschnitzel, Sägespäne";
+      else if (hasHacks) prodText = "Hackschnitzel";
+      else if (hasSaeg) prodText = "Sägespäne";
+    }
+
+    const produktTxt = prodText ? `<br><b>Produkt:</b> ${prodText}` : "";
+
     return `<b>${m.firma}</b><br>${m.ort}${m.plz ? " " + m.plz : ""}${landInfo}<br>${preisTxt}${produktTxt}`;
   }
 
@@ -308,10 +321,8 @@
       loadCsvAsObjects(sheetUrlKunden)
     ]);
 
-    werke = normalizePreise(parseFirmen(firmenRows)).map(w=>{
-      const ds = datasetFromProdukt(w.produkt);
-      return { ...w, dataset: ds, productType: ds };
-    });
+    // IMPORTANT: produkt bleibt ORIGINAL, kann also mehrere enthalten
+    werke = normalizePreise(parseFirmen(firmenRows));
 
     kunden = parseKunden(kundenRows);
   }
@@ -348,8 +359,7 @@
         farbe:w.farbe,
         zert:(w.zert||"").toLowerCase(),
         country_code:(c.country_code||""),
-        dataset:w.dataset,
-        productType:w.productType
+        produkt:(w.produkt||"") // ✅ neu: produkt am Marker speichern
       });
 
       bounds.extend([c.lat,c.lon]);
@@ -429,8 +439,22 @@
         continue;
       }
 
-      if (m.productType === "hackschnitzel" && !showHacks) continue;
-      if (m.productType === "saegespaene"   && !showSaeg)  continue;
+      // ✅ PRODUKT-FILTER NEU (liest m.produkt, kann mehrere enthalten)
+      const prod = (m.produkt || "").toLowerCase();
+      const hasHacks = prod.includes("hackschnitzel");
+      const hasSaeg  = prod.includes("sägespäne") || prod.includes("saegespaene") || prod.includes("sägespaene");
+
+      // wenn keine Checkbox aktiv -> nichts anzeigen
+      if (!showHacks && !showSaeg) continue;
+
+      // nur Hacks aktiv -> muss Hacks haben
+      if (showHacks && !showSaeg && !hasHacks) continue;
+
+      // nur Saeg aktiv -> muss Saeg haben
+      if (!showHacks && showSaeg && !hasSaeg) continue;
+
+      // beide aktiv -> muss mindestens eins haben
+      if (showHacks && showSaeg && !(hasHacks || hasSaeg)) continue;
 
       const z = (m.zert || "");
       let zertOK = false;
@@ -547,7 +571,6 @@
       const latlng = hit.marker.getLatLng();
       map.setView(latlng, 9);
       hit.marker.openTooltip();
-      // als Punkt für Route nutzen:
       handleMarkerClick(query.toUpperCase(), { lat: latlng.lat, lon: latlng.lng, country_code: hit.country_code || "" });
       return;
     }
@@ -559,7 +582,6 @@
       return;
     }
 
-    // temp Marker setzen/ersetzen
     if (tempSearchMarker) map.removeLayer(tempSearchMarker);
     tempSearchMarker = L.marker([c.lat, c.lon], { icon: ortIcon })
       .bindTooltip(`<b>Ort:</b> ${query}`, {sticky:true})
@@ -568,7 +590,6 @@
     map.setView([c.lat, c.lon], 10);
     tempSearchMarker.openTooltip();
 
-    // als Punkt für Route nutzen
     handleMarkerClick(`Ort: ${query}`, c);
   }
 
