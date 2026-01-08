@@ -437,8 +437,9 @@
     const selected = getSelectedCountries();
     if (selected.length === 1 && selected[0] === "all") btn.textContent = "Alle Länder";
     else {
-      const names = {de:"DE",at:"AT",pl:"PL",cz:"CZ",fr:"FR",ch:"CH",be:"BE",sk:"SK"};
-      btn.textContent = selected.map(c => names[c] || c.toUpperCase()).join(", ");
+      const names = { de:"DE", at:"AT", pl:"PL", cz:"CZ", fr:"FR", ch:"CH", be:"BE", sk:"SK",
+  dk:"DK", ee:"EE", fi:"FI", it:"IT", lv:"LV", lt:"LT", nl:"NL", se:"SE", gb:"GB"};
+    btn.textContent = selected.map(c => names[c] || c.toUpperCase()).join(", ");
     }
   }
 
