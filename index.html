@@ -115,9 +115,6 @@
 </div>
 
 <script>
-  // =======================
-  // Karte
-  // =======================
   const map = L.map("map", { maxZoom: 19 }).setView([51, 11], 5);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     minZoom: 4, maxZoom: 19, attribution: "&copy; OpenStreetMap"
@@ -131,9 +128,7 @@
     return "red";
   }
 
-  // =======================
-  // GeoCache + Geocode
-  // =======================
+  // GeoCache
   const GEO_CACHE_KEY = "geoCacheProdukte_EU_v3";
   const geoCache = JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}");
   const inFlight = new Map();
@@ -178,9 +173,7 @@
     return null;
   }
 
-  // =======================
   // Icons
-  // =======================
   const blauesDreieck = L.divIcon({
     className: "custom-triangle",
     html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -200,9 +193,7 @@
     popupAnchor: [0,-18]
   });
 
-  // =======================
   // Tabellen Links
-  // =======================
   const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/gviz/tq?tqx=out:csv&gid=0";
   const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/gviz/tq?tqx=out:csv&gid=0";
 
@@ -215,9 +206,6 @@
     return (parsed.data || []).filter(r => r && Object.keys(r).length);
   }
 
-  // =======================
-  // Produkt Helfer
-  // =======================
   function normProduktName(p){
     const s = (p || "").toLowerCase();
     if (s.includes("hackschnitzel")) return "hackschnitzel";
@@ -225,7 +213,6 @@
     return "";
   }
 
-  // Aktiver Preis (nur intern)
   function activePriceForFirma(w){
     const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
     const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
@@ -241,17 +228,14 @@
     return { price: Math.min(...list), keinPreis: false };
   }
 
-  // =======================
-  // Parser Firmen (2× Produkt / Preis)
-  // =======================
   function parseFirmen(rows){
     const lc = (s)=>String(s||"").toLowerCase().trim();
     const keys = Object.keys(rows[0]||{});
 
     const findKey = (cands) => keys.find(k => cands.includes(lc(k)));
     const firmaKey = findKey(["firma","name","werk"]) || "firma";
-    const ortKey   = findKey(["ort","stadt","location","standort","adresse"]) || "ort";
     const plzKey   = findKey(["plz","zip","postcode","postleitzahl"]) || "plz";
+    const ortKey   = findKey(["ort","stadt","location","standort","adresse"]) || "ort";
     const landKey  = findKey(["land","country"]) || "land";
     const zertKey  = keys.find(k => ["zertifikate","zertifikat","zert","cert"].includes(lc(k)));
 
@@ -272,22 +256,19 @@
         const prodNorm = normProduktName(prodRaw);
         const priceVal = parseFloat(String(priceRaw).replace(",", "."));
 
-        if (prodNorm && isFinite(priceVal) && priceVal > 0) {
-          prices[prodNorm] = priceVal;
-        } else if (prodNorm && !(prodNorm in prices)) {
-          prices[prodNorm] = 0;
-        }
+        if (prodNorm && isFinite(priceVal) && priceVal > 0) prices[prodNorm] = priceVal;
+        else if (prodNorm && !(prodNorm in prices)) prices[prodNorm] = 0;
       }
 
       return {
         firma: (x[firmaKey]||"").toString().trim(),
-        ort: (x[ortKey]||"").toString().trim(),
         plz: (x[plzKey]||"").toString().trim(),
+        ort: (x[ortKey]||"").toString().trim(),
         land:(x[landKey]||"").toString().trim(),
         prices,
         zert: zertKey ? (x?.[zertKey]||"").toString().trim() : ""
       };
-    }).filter(w => w.firma && w.ort);
+    }).filter(w => w.firma && (w.plz || w.ort));
   }
 
   function parseKunden(rows){
@@ -296,21 +277,19 @@
     const findKey = (cands) => keys.find(k => cands.includes(lc(k)));
 
     const kundeKey = findKey(["kunde","name","firma","unternehmen"]) || "kunde";
-    const ortKey   = findKey(["ort","stadt","location","adresse","standort"]) || "ort";
     const plzKey   = findKey(["plz","zip","postcode","postleitzahl"]) || "plz";
+    const ortKey   = findKey(["ort","stadt","location","adresse","standort"]) || "ort";
     const landKey  = findKey(["land","country"]) || "land";
 
     return rows.map(x => ({
       name: (x[kundeKey]||"").toString().trim(),
-      ort: (x[ortKey]||"").toString().trim(),
       plz: (x[plzKey]||"").toString().trim(),
+      ort: (x[ortKey]||"").toString().trim(),
       land: (x[landKey]||"").toString().trim()
-    })).filter(k => k.name && k.ort);
+    })).filter(k => k.name && (k.plz || k.ort));
   }
 
-  // =======================
-  // Tooltip Firma
-  // =======================
+  // Tooltip Firma: PLZ zuerst
   function tooltipHtmlFirma(m){
     const landInfo = m.land ? `<br><b>Land:</b> ${m.land}` : "";
 
@@ -321,28 +300,29 @@
     const lineS = (pS !== undefined) ? `<b>Sägespäne:</b> ${isFinite(pS) && pS>0 ? pS.toFixed(2)+" €" : "–"}` : "";
 
     const lines = [lineH, lineS].filter(Boolean).join("<br>");
-    return `<b>${m.firma}</b><br>${m.ort}${m.plz ? " " + m.plz : ""}${landInfo}${lines ? "<br>"+lines : ""}`;
+    const place = `${m.plz ? m.plz+" " : ""}${m.ort || ""}`.trim();
+
+    return `<b>${m.firma}</b><br>${place}${landInfo}${lines ? "<br>"+lines : ""}`;
   }
 
-  // =======================
   // State
-  // =======================
   let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
   let tempSearchMarker = null;
 
+  // ✅ Geocode-Queries: PLZ zuerst
   function buildQueries(obj){
     const plz = (obj.plz||"").trim();
     const ort = (obj.ort||"").trim();
     const land = (obj.land||"").trim();
+
     const q1 = `${plz} ${ort}, ${land}`.replace(/\s+/g," ").trim();
-    const q2 = `${ort}, ${land}`.replace(/\s+/g," ").trim();
-    const q3 = `${ort}`.trim();
-    return [q1,q2,q3];
+    const q2 = `${plz} ${ort}`.replace(/\s+/g," ").trim();
+    const q3 = `${ort}, ${land}`.replace(/\s+/g," ").trim();
+    const q4 = `${ort}`.trim();
+
+    return [q1,q2,q3,q4];
   }
 
-  // =======================
-  // Daten laden + Map bauen
-  // =======================
   async function ladeDaten(){
     const [firmenRows, kundenRows] = await Promise.all([
       loadCsvAsObjects(sheetUrlFirmen),
@@ -375,8 +355,8 @@
         type:"firma",
         marker: circle,
         firma:w.firma,
-        ort:w.ort,
         plz:w.plz,
+        ort:w.ort,
         land:w.land,
         zert:(w.zert||"").toLowerCase(),
         country_code:(c.country_code||""),
@@ -396,8 +376,9 @@
       if(!item.c) continue;
       const { k, c } = item;
 
+      const place = `${k.plz ? k.plz+" " : ""}${k.ort || ""}`.trim();
       const m = L.marker([c.lat,c.lon],{icon:blauesDreieck})
-        .bindTooltip(`<b>${k.name}</b><br>${k.ort}${k.plz ? " " + k.plz : ""}${k.land ? "<br>" + k.land : ""}`,{sticky:true})
+        .bindTooltip(`<b>${k.name}</b><br>${place}${k.land ? "<br>" + k.land : ""}`,{sticky:true})
         .on("click",()=>handleMarkerClick(k.name,c));
 
       alleMarker.push({ type:"kunde", marker:m, country_code:(c.country_code||"") });
@@ -408,9 +389,6 @@
     updateLayers();
   }
 
-  // =======================
-  // Filter / Layer
-  // =======================
   function getSelectedCountries() {
     const chks = document.querySelectorAll(".countryChk");
     const selected = [];
@@ -517,9 +495,7 @@
     }
   }
 
-  // =======================
-  // ROUTE + NEUE BERECHNUNG + beide Produkte ausgeben
-  // =======================
+  // Route + Berechnung + beide Produkte
   function handleMarkerClick(label,coord){
     selectedPoints.push({label,coord});
     if(selectedPoints.length===2){
@@ -547,33 +523,24 @@
     const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
     const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
 
-    // Welche Firma ist beteiligt? (falls Start oder Ziel eine Firma ist)
     const firmaObjA = alleMarker.find(m => m.type==="firma" && m.firma === a.label);
     const firmaObjB = alleMarker.find(m => m.type==="firma" && m.firma === b.label);
     const firmeneintrag = firmaObjA || firmaObjB;
 
-    // === Deine Formel-Parameter ===
-    const G = 90;
-    const J = 90;
-    const K = 1.05;
-
-    // km-Satz nach Schwelle: <=200 => 2,15 ; >200 => 1,85
+    const G = 90, J = 90, K = 1.05;
     const kmSatz = (distKm > 200) ? 1.85 : 2.15;
 
-    // Hilfsfunktion: Formel exakt wie Excel
     function totalForPrice(F){
       const f = isFinite(F) && F > 0 ? F : 0;
       return (((f * G) / G) + ((kmSatz * distKm) / J)) * K;
     }
 
-    // Preise aus Firma holen
     const preisH = firmeneintrag?.prices?.hackschnitzel;
     const preisS = firmeneintrag?.prices?.saegespaene;
 
     const totalH = (preisH !== undefined) ? totalForPrice(preisH) : null;
     const totalS = (preisS !== undefined) ? totalForPrice(preisS) : null;
 
-    // Für Anzeige im Popup
     const lineH = (preisH !== undefined)
       ? `<b>Hackschnitzel</b><br>Werkpreis: ${isFinite(preisH) && preisH>0 ? preisH.toFixed(2)+" €" : "–"}<br>Gesamt: <b>${totalH.toFixed(2)} €</b>`
       : `<b>Hackschnitzel</b><br>Werkpreis: –<br>Gesamt: –`;
@@ -582,7 +549,6 @@
       ? `<b>Sägespäne</b><br>Werkpreis: ${isFinite(preisS) && preisS>0 ? preisS.toFixed(2)+" €" : "–"}<br>Gesamt: <b>${totalS.toFixed(2)} €</b>`
       : `<b>Sägespäne</b><br>Werkpreis: –<br>Gesamt: –`;
 
-    // Fallback wenn keine Firma beteiligt -> nur Transportanteil (F=0)
     const totalTransportOnly = totalForPrice(0);
 
     if(routeLine) map.removeLayer(routeLine);
@@ -611,18 +577,13 @@
     if (t && t.closest) {
       if (t.closest('.leaflet-marker-icon') ||
           t.closest('.leaflet-popup') ||
-          t.closest('.leaflet-interactive')) {
-        return;
-      }
+          t.closest('.leaflet-interactive')) return;
     }
     if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
     selectedPoints = [];
     map.closePopup();
   });
 
-  // =======================
-  // Suche (Marker oder Ort)
-  // =======================
   async function searchOrGeocode(query){
     const hit = alleMarker.find(m =>
       m.marker &&
@@ -652,9 +613,6 @@
     handleMarkerClick(`Ort: ${query}`, c);
   }
 
-  // =======================
-  // UI Events
-  // =======================
   document.addEventListener("change", e => {
     if (e.target && e.target.matches('input[type="checkbox"]')) {
       if (e.target.classList.contains("countryChk")) {
@@ -698,7 +656,6 @@
     });
   }
 
-  // Start
   (async ()=>{
     try{
       await ladeDaten();
