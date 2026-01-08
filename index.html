@@ -101,7 +101,8 @@
   <hr>
   <b>Produkt</b><br>
   <label><input type="checkbox" id="chkHackschnitzel" checked> Hackschnitzel</label><br>
-  <label><input type="checkbox" id="chkSaegespaene" checked> Sägespäne</label>
+  <label><input type="checkbox" id="chkSaegespaene" checked> Sägespäne</label><br>
+  <label><input type="checkbox" id="chkSiebmaterial" checked> Siebmaterial</label>
 </div>
 
 <!-- Legende -->
@@ -206,23 +207,29 @@
     return (parsed.data || []).filter(r => r && Object.keys(r).length);
   }
 
+  // Produkt-Keys normalisieren (NEU: Siebmaterial)
   function normProduktName(p){
     const s = (p || "").toLowerCase();
     if (s.includes("hackschnitzel")) return "hackschnitzel";
     if (s.includes("sägespäne") || s.includes("saegespaene") || s.includes("sägespaene") || s.includes("saegespäne")) return "saegespaene";
+    if (s.includes("siebmaterial")) return "siebmaterial";
     return "";
   }
 
+  // aktiver Preis (für Marker-Farbe)
   function activePriceForFirma(w){
     const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
     const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
+    const showSieb  = document.getElementById("chkSiebmaterial")?.checked ?? true;
 
     const pH = w.prices?.hackschnitzel;
     const pS = w.prices?.saegespaene;
+    const pM = w.prices?.siebmaterial;
 
     const list = [];
     if (showHacks && isFinite(pH) && pH > 0) list.push(pH);
     if (showSaeg  && isFinite(pS) && pS > 0) list.push(pS);
+    if (showSieb  && isFinite(pM) && pM > 0) list.push(pM);
 
     if (!list.length) return { price: 0, keinPreis: true };
     return { price: Math.min(...list), keinPreis: false };
@@ -239,6 +246,7 @@
     const landKey  = findKey(["land","country"]) || "land";
     const zertKey  = keys.find(k => ["zertifikate","zertifikat","zert","cert"].includes(lc(k)));
 
+    // nimmt automatisch produkt / produkt_2 / produkt_3 ... (auch Spalte I)
     const produktKeys = keys.filter(k => lc(k).startsWith("produkt"));
     const preisKeys   = keys.filter(k => lc(k).startsWith("preis"));
 
@@ -289,18 +297,19 @@
     })).filter(k => k.name && (k.plz || k.ort));
   }
 
-  // Tooltip Firma: PLZ zuerst
   function tooltipHtmlFirma(m){
     const landInfo = m.land ? `<br><b>Land:</b> ${m.land}` : "";
+    const place = `${m.plz ? m.plz+" " : ""}${m.ort || ""}`.trim();
 
     const pH = m.prices?.hackschnitzel;
     const pS = m.prices?.saegespaene;
+    const pM = m.prices?.siebmaterial;
 
     const lineH = (pH !== undefined) ? `<b>Hackschnitzel:</b> ${isFinite(pH) && pH>0 ? pH.toFixed(2)+" €" : "–"}` : "";
     const lineS = (pS !== undefined) ? `<b>Sägespäne:</b> ${isFinite(pS) && pS>0 ? pS.toFixed(2)+" €" : "–"}` : "";
+    const lineM = (pM !== undefined) ? `<b>Siebmaterial:</b> ${isFinite(pM) && pM>0 ? pM.toFixed(2)+" €" : "–"}` : "";
 
-    const lines = [lineH, lineS].filter(Boolean).join("<br>");
-    const place = `${m.plz ? m.plz+" " : ""}${m.ort || ""}`.trim();
+    const lines = [lineH,lineS,lineM].filter(Boolean).join("<br>");
 
     return `<b>${m.firma}</b><br>${place}${landInfo}${lines ? "<br>"+lines : ""}`;
   }
@@ -309,7 +318,6 @@
   let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
   let tempSearchMarker = null;
 
-  // ✅ Geocode-Queries: PLZ zuerst
   function buildQueries(obj){
     const plz = (obj.plz||"").trim();
     const ort = (obj.ort||"").trim();
@@ -435,6 +443,7 @@
 
     const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
     const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
+    const showSieb  = document.getElementById("chkSiebmaterial")?.checked ?? true;
 
     for(const m of alleMarker){
       if(m.type === "kunde"){
@@ -448,13 +457,21 @@
 
       const pH = m.prices?.hackschnitzel;
       const pS = m.prices?.saegespaene;
+      const pM = m.prices?.siebmaterial;
+
       const hasH = pH !== undefined;
       const hasS = pS !== undefined;
+      const hasM = pM !== undefined;
 
-      if (!showHacks && !showSaeg) continue;
-      if (showHacks && !showSaeg && !hasH) continue;
-      if (!showHacks && showSaeg && !hasS) continue;
-      if (showHacks && showSaeg && !(hasH || hasS)) continue;
+      if (!showHacks && !showSaeg && !showSieb) continue;
+      if (showHacks && !hasH && !showSaeg && !showSieb) continue;
+      if (showSaeg  && !hasS && !showHacks && !showSieb) continue;
+      if (showSieb  && !hasM && !showHacks && !showSaeg) continue;
+
+      // Wenn mehrere aktiv sind: mindestens eins muss vorhanden sein
+      if ((showHacks || showSaeg || showSieb) && !(
+        (showHacks && hasH) || (showSaeg && hasS) || (showSieb && hasM)
+      )) continue;
 
       const z = (m.zert || "");
       let zertOK = false;
@@ -495,7 +512,7 @@
     }
   }
 
-  // Route + Berechnung + beide Produkte
+  // Route + Berechnung + alle Produkte im Popup
   function handleMarkerClick(label,coord){
     selectedPoints.push({label,coord});
     if(selectedPoints.length===2){
@@ -537,9 +554,11 @@
 
     const preisH = firmeneintrag?.prices?.hackschnitzel;
     const preisS = firmeneintrag?.prices?.saegespaene;
+    const preisM = firmeneintrag?.prices?.siebmaterial;
 
     const totalH = (preisH !== undefined) ? totalForPrice(preisH) : null;
     const totalS = (preisS !== undefined) ? totalForPrice(preisS) : null;
+    const totalM = (preisM !== undefined) ? totalForPrice(preisM) : null;
 
     const lineH = (preisH !== undefined)
       ? `<b>Hackschnitzel</b><br>Werkpreis: ${isFinite(preisH) && preisH>0 ? preisH.toFixed(2)+" €" : "–"}<br>Gesamt: <b>${totalH.toFixed(2)} €</b>`
@@ -548,6 +567,10 @@
     const lineS = (preisS !== undefined)
       ? `<b>Sägespäne</b><br>Werkpreis: ${isFinite(preisS) && preisS>0 ? preisS.toFixed(2)+" €" : "–"}<br>Gesamt: <b>${totalS.toFixed(2)} €</b>`
       : `<b>Sägespäne</b><br>Werkpreis: –<br>Gesamt: –`;
+
+    const lineM = (preisM !== undefined)
+      ? `<b>Siebmaterial</b><br>Werkpreis: ${isFinite(preisM) && preisM>0 ? preisM.toFixed(2)+" €" : "–"}<br>Gesamt: <b>${totalM.toFixed(2)} €</b>`
+      : `<b>Siebmaterial</b><br>Werkpreis: –<br>Gesamt: –`;
 
     const totalTransportOnly = totalForPrice(0);
 
@@ -562,7 +585,7 @@
       <b>km-Satz:</b> ${kmSatz.toFixed(2)} €<br>
       <hr style="border:none;height:1px;background:#eee;margin:8px 0;">
       ${firmeneintrag ? `
-        ${lineH}<br><br>${lineS}
+        ${lineH}<br><br>${lineS}<br><br>${lineM}
       ` : `
         <b>Hinweis:</b> Keine Firma ausgewählt – nur Transportanteil.<br>
         <b>Transport gesamt:</b> <span style="color:green;font-size:1.05em">${totalTransportOnly.toFixed(2)} €</span>
