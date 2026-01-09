@@ -149,7 +149,7 @@
 
 <script>
 /* =========================================================
-   GEMEINSAM: MAP + GEO + UI
+   GEMEINSAM: MAP + HELPER
 ========================================================= */
 
 const map = L.map("map", { maxZoom: 19 }).setView([51, 11], 5);
@@ -165,7 +165,71 @@ function colorForPrice(p, keinPreis) {
   return "red";
 }
 
-// Geocache (gemeinsam)
+// Ländername -> country_code (für Filter ohne Reverse-Geocode)
+function countryCodeFromLand(landRaw){
+  const s = String(landRaw||"").toLowerCase().trim();
+  if (!s) return "";
+  if (s.includes("deutschland") || s === "de") return "de";
+  if (s.includes("österreich") || s.includes("austria") || s === "at") return "at";
+  if (s.includes("schweiz") || s.includes("switzerland") || s === "ch") return "ch";
+  if (s.includes("frankreich") || s.includes("france") || s === "fr") return "fr";
+  if (s.includes("polen") || s.includes("poland") || s === "pl") return "pl";
+  if (s.includes("tschechien") || s.includes("czech") || s === "cz") return "cz";
+  if (s.includes("slowakei") || s.includes("slovakia") || s === "sk") return "sk";
+  if (s.includes("belgien") || s.includes("belgium") || s === "be") return "be";
+  if (s.includes("dänemark") || s.includes("denmark") || s === "dk") return "dk";
+  if (s.includes("schweden") || s.includes("sweden") || s === "se") return "se";
+  if (s.includes("finnland") || s.includes("finland") || s === "fi") return "fi";
+  if (s.includes("italien") || s.includes("italy") || s === "it") return "it";
+  if (s.includes("estland") || s.includes("estonia") || s === "ee") return "ee";
+  if (s.includes("lettland") || s.includes("latvia") || s === "lv") return "lv";
+  if (s.includes("litauen") || s.includes("lithuania") || s === "lt") return "lt";
+  if (s.includes("niederlande") || s.includes("netherlands") || s === "nl") return "nl";
+  if (s.includes("united kingdom") || s.includes("uk") || s.includes("england") || s === "gb") return "gb";
+  return "";
+}
+
+// ---- LAT/LON aus Spalte R/S (18/19) oder Header (lat/lon) holen ----
+function parseFloatSmart(v){
+  const n = parseFloat(String(v ?? "").replace(",", ".").trim());
+  return isFinite(n) ? n : NaN;
+}
+function pickKey(keys, candidates){
+  const lc = (x)=>String(x||"").toLowerCase().trim();
+  const set = new Set(candidates.map(c=>c.toLowerCase()));
+  return keys.find(k => set.has(lc(k)));
+}
+function extractLatLonFromRow(row, keys){
+  if (!row) return { lat: NaN, lon: NaN };
+
+  // 1) per Headername
+  const latKey = pickKey(keys, ["lat","latitude","breite","breitengrad"]);
+  const lonKey = pickKey(keys, ["lon","lng","longitude","längengrad","laengengrad"]);
+
+  let lat = latKey ? parseFloatSmart(row[latKey]) : NaN;
+  let lon = lonKey ? parseFloatSmart(row[lonKey]) : NaN;
+
+  // 2) fallback: Spalte R/S (Index 17/18)
+  if (!(isFinite(lat) && isFinite(lon))) {
+    const keyR = keys[17]; // R
+    const keyS = keys[18]; // S
+    if (keyR && keyS) {
+      lat = parseFloatSmart(row[keyR]);
+      lon = parseFloatSmart(row[keyS]);
+    }
+  }
+
+  // validieren
+  if (!(isFinite(lat) && isFinite(lon))) return { lat: NaN, lon: NaN };
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return { lat: NaN, lon: NaN };
+
+  return { lat, lon };
+}
+
+/* =========================================================
+   OPTIONAL: Geocode nur wenn Lat/Lon fehlen
+========================================================= */
+
 const GEO_CACHE_KEY = "geoCache_MULTI_EU_v1";
 const geoCache = JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}");
 const inFlight = new Map();
@@ -210,6 +274,10 @@ async function geocodeWithFallback(queries){
   return null;
 }
 
+/* =========================================================
+   Icons
+========================================================= */
+
 const blauesDreieck = L.divIcon({
   className: "custom-triangle",
   html: `<svg width="24" height="24" viewBox="0 0 24 24">
@@ -244,7 +312,10 @@ const ortIcon = L.divIcon({
   popupAnchor: [0,-18]
 });
 
-// Länderfilter UI
+/* =========================================================
+   Länderfilter UI
+========================================================= */
+
 function getSelectedCountries() {
   const chks = document.querySelectorAll(".countryChk");
   const selected = [];
@@ -289,7 +360,7 @@ document.addEventListener("change", (e) => {
 });
 
 /* =========================================================
-   UNIT MANAGER (Switch Pellets / Sägerestholz)
+   UNIT MANAGER
 ========================================================= */
 
 let currentUnit = null;
@@ -303,17 +374,12 @@ function hideAllPanels(){
 
 function clearMapState(unit){
   if (!unit) return;
-  // remove markers
   (unit.alleMarker || []).forEach(m => {
     if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker);
   });
-  // remove route line
-  if (unit.routeLine && map.hasLayer(unit.routeLine)) {
-    map.removeLayer(unit.routeLine);
-  }
+  if (unit.routeLine && map.hasLayer(unit.routeLine)) map.removeLayer(unit.routeLine);
   unit.routeLine = null;
   unit.selectedPoints = [];
-  // remove temp marker if unit has
   if (unit.tempSearchMarker && map.hasLayer(unit.tempSearchMarker)) map.removeLayer(unit.tempSearchMarker);
   unit.tempSearchMarker = null;
   if (unit.searchResultMarker && map.hasLayer(unit.searchResultMarker)) map.removeLayer(unit.searchResultMarker);
@@ -325,7 +391,6 @@ document.getElementById("unitSelect").addEventListener("change", async (e) => {
   const v = e.target.value;
   const hint = document.getElementById("searchHint");
 
-  // clear old unit
   if (currentUnit) clearMapState(currentUnit);
   currentUnit = null;
 
@@ -358,7 +423,6 @@ document.getElementById("unitSelect").addEventListener("change", async (e) => {
   }
 });
 
-// Suche: leitet an aktive Unit weiter
 document.getElementById("searchInput").addEventListener("keydown", async (e) => {
   if (e.key !== "Enter") return;
   const q = (e.target.value || "").trim();
@@ -376,7 +440,6 @@ document.getElementById("searchInput").addEventListener("keydown", async (e) => 
   }
 });
 
-// Map click: route entfernen (gemeinsam)
 map.on('click', (e) => {
   const t = e.originalEvent && e.originalEvent.target;
   if (t && t.closest) {
@@ -391,7 +454,6 @@ map.on('click', (e) => {
   }
 });
 
-// Checkbox change: update layers je Unit (wir hören global auf checkbox)
 document.addEventListener("change", (e) => {
   if (!currentUnit) return;
   if (e.target && e.target.matches('input[type="checkbox"]') && !e.target.classList.contains("countryChk")) {
@@ -400,16 +462,15 @@ document.addEventListener("change", (e) => {
 });
 
 /* =========================================================
-   UNIT: SÄGERESTHOLZ (dein aktueller Code, minimal angepasst)
+   UNIT: SÄGERESTHOLZ  (LAT/LON eingebaut)
 ========================================================= */
 
 function createSaegerestholzUnit(){
-  // Konfiguration (wie bei dir)
   const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/gviz/tq?tqx=out:csv&gid=0";
   const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/gviz/tq?tqx=out:csv&gid=0";
 
-  // Formeln
   const MARGE = 1.05;
+
   const HACKS_TEILER = 90;
   const HACKS_KM_UNTER_GLEICH_200 = 2.15;
   const HACKS_KM_UEBER_200        = 2.15;
@@ -483,19 +544,26 @@ function createSaegerestholzUnit(){
         const priceRaw = rKey ? (x?.[rKey] ?? "").toString() : "";
 
         const prodNorm = normProduktName(prodRaw);
-        const priceVal = parseFloat(String(priceRaw).replace(",", "."));
+        const priceVal = parseFloatSmart(priceRaw);
 
         if (prodNorm && isFinite(priceVal) && priceVal > 0) prices[prodNorm] = priceVal;
         else if (prodNorm && !(prodNorm in prices)) prices[prodNorm] = 0;
       }
 
+      const { lat, lon } = extractLatLonFromRow(x, keys);
+
+      const land = (x[landKey]||"").toString().trim();
+      const cc = countryCodeFromLand(land);
+
       return {
         firma: (x[firmaKey]||"").toString().trim(),
         plz: (x[plzKey]||"").toString().trim(),
         ort: (x[ortKey]||"").toString().trim(),
-        land:(x[landKey]||"").toString().trim(),
+        land,
+        country_code: cc,
         prices,
-        zert: zertKey ? (x?.[zertKey]||"").toString().trim() : ""
+        zert: zertKey ? (x?.[zertKey]||"").toString().trim() : "",
+        lat, lon
       };
     }).filter(w => w.firma && (w.plz || w.ort));
   }
@@ -510,12 +578,18 @@ function createSaegerestholzUnit(){
     const ortKey   = findKey(["ort","stadt","location","adresse","standort"]) || "ort";
     const landKey  = findKey(["land","country"]) || "land";
 
-    return rows.map(x => ({
-      name: (x[kundeKey]||"").toString().trim(),
-      plz: (x[plzKey]||"").toString().trim(),
-      ort: (x[ortKey]||"").toString().trim(),
-      land: (x[landKey]||"").toString().trim()
-    })).filter(k => k.name && (k.plz || k.ort));
+    return rows.map(x => {
+      const { lat, lon } = extractLatLonFromRow(x, keys);
+      const land = (x[landKey]||"").toString().trim();
+      return {
+        name: (x[kundeKey]||"").toString().trim(),
+        plz: (x[plzKey]||"").toString().trim(),
+        ort: (x[ortKey]||"").toString().trim(),
+        land,
+        country_code: countryCodeFromLand(land),
+        lat, lon
+      };
+    }).filter(k => k.name && (k.plz || k.ort));
   }
 
   function buildQueries(obj){
@@ -563,7 +637,26 @@ function createSaegerestholzUnit(){
     return { price: Math.min(...list), keinPreis: false };
   }
 
-  // UNIT STATE
+  async function coordForRow(row){
+    // 1) Lat/Lon aus Sheet benutzen
+    if (isFinite(row.lat) && isFinite(row.lon)) {
+      return {
+        lat: row.lat,
+        lon: row.lon,
+        country_code: row.country_code || ""
+      };
+    }
+    // 2) fallback Geocode (wenn mal leer)
+    const c = await geocodeWithFallback(buildQueries(row));
+    if (!c) return null;
+    // wenn wir aus Land schon cc haben, nimm Land-cc; sonst vom Geocode
+    return {
+      lat: c.lat,
+      lon: c.lon,
+      country_code: row.country_code || c.country_code || ""
+    };
+  }
+
   const unit = {
     werke: [],
     kunden: [],
@@ -586,7 +679,8 @@ function createSaegerestholzUnit(){
       unit.alleMarker = [];
       const bounds = L.latLngBounds();
 
-      const firmGeo = await Promise.all(unit.werke.map(async (w)=>({ w, c: await geocodeWithFallback(buildQueries(w)) })));
+      // Werke
+      const firmGeo = await Promise.all(unit.werke.map(async (w)=>({ w, c: await coordForRow(w) })));
       for (const item of firmGeo){
         if(!item.c) continue;
         const { w, c } = item;
@@ -621,7 +715,8 @@ function createSaegerestholzUnit(){
         bounds.extend([c.lat,c.lon]);
       }
 
-      const kundGeo = await Promise.all(unit.kunden.map(async (k)=>({ k, c: await geocodeWithFallback(buildQueries(k)) })));
+      // Kunden
+      const kundGeo = await Promise.all(unit.kunden.map(async (k)=>({ k, c: await coordForRow(k) })));
       for (const item of kundGeo){
         if(!item.c) continue;
         const { k, c } = item;
@@ -640,7 +735,6 @@ function createSaegerestholzUnit(){
     },
 
     updateLayers(){
-      // remove all
       unit.alleMarker.forEach(m=>{ if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker); });
 
       const selectedCountries = getSelectedCountries();
@@ -754,7 +848,6 @@ function createSaegerestholzUnit(){
       unit.routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
 
       const mid = coords[Math.floor(coords.length/2)];
-
       const lineH = `<b>Hackschnitzel:</b> ${totalH !== null ? `<span style="color:green;font-size:1.05em">${totalH.toFixed(2)} €</span>` : "–"}`;
       const lineS = `<b>Sägespäne:</b> ${totalS !== null ? `<span style="color:green;font-size:1.05em">${totalS.toFixed(2)} €</span>` : "–"}`;
       const lineM = `<b>Siebmaterial:</b> ${totalM !== null ? `<span style="color:green;font-size:1.05em">${totalM.toFixed(2)} €</span>` : "–"}`;
@@ -806,8 +899,7 @@ function createSaegerestholzUnit(){
 }
 
 /* =========================================================
-   UNIT: PELLETS (dein Code – kompakt, gleiche Logik)
-   (ohne Länderflächen-GeoJSON, damit es stabil + leichter ist)
+   UNIT: PELLETS (LAT/LON eingebaut)
 ========================================================= */
 
 function createPelletsUnit(){
@@ -842,17 +934,25 @@ function createPelletsUnit(){
 
     const zertKey = findKey(["zertifikate","zertifikat","zert","cert"]);
     const sackKey = findKey(["sackware","sack","bag","bagged"]);
+    const landKey = findKey(["land","country"]);
 
     return rows
       .filter(x => (x?.[nameKey]||"").toString().trim() && (x?.[ortKey]||"").toString().trim())
-      .map(x => ({
-        firma: (x[nameKey]||"").toString().trim(),
-        ort: (x[ortKey]||"").toString().trim(),
-        preis: parseFloat(String(x?.[preisKey] ?? "0").replace(",", ".")),
-        preisSack: parseFloat(String(x?.[sackPreisKey] ?? "0").replace(",", ".")),
-        zert: (x?.[zertKey]||"").toString().trim(),
-        sack: (x?.[sackKey]||"").toString().trim()
-      }));
+      .map(x => {
+        const { lat, lon } = extractLatLonFromRow(x, keys);
+        const land = landKey ? (x?.[landKey]||"").toString().trim() : "";
+        return {
+          firma: (x[nameKey]||"").toString().trim(),
+          ort: (x[ortKey]||"").toString().trim(),
+          preis: parseFloatSmart(x?.[preisKey] ?? "0"),
+          preisSack: parseFloatSmart(x?.[sackPreisKey] ?? "0"),
+          zert: (x?.[zertKey]||"").toString().trim(),
+          sack: (x?.[sackKey]||"").toString().trim(),
+          land,
+          country_code: countryCodeFromLand(land),
+          lat, lon
+        };
+      });
   }
 
   function normalizePreise(daten){
@@ -884,6 +984,7 @@ function createPelletsUnit(){
     const text = await res.text();
     const parsed = Papa.parse(text, { header:true, skipEmptyLines:true });
     const rows = (parsed.data||[]).filter(r=>r && Object.keys(r).length);
+    const keys = Object.keys(rows[0]||{});
 
     const headers = Object.keys(rows[0]||{});
     const nameKey = headers.find(h=>h.toLowerCase().includes("name"))||"name";
@@ -891,26 +992,42 @@ function createPelletsUnit(){
     const loseKey = headers.find(h=>h.toLowerCase()==="lose") || "lose";
     const sackKey = headers.find(h=>h.toLowerCase()==="sackware") || "sackware";
     const sonstKey = headers.find(h=>h.toLowerCase().includes("sonstige")) || "sonstige";
+    const landKey = headers.find(h=>["land","country"].includes(h.toLowerCase()));
 
     return rows
-      .map(x=>({
-        name:(x[nameKey]||"").trim(),
-        ort:(x[ortKey]||"").trim(),
-        lose:(x[loseKey]||"").trim().toLowerCase(),
-        sackware:(x[sackKey]||"").trim().toLowerCase(),
-        sonstige:(x[sonstKey]||"").trim().toLowerCase()
-      }))
+      .map(x=>{
+        const { lat, lon } = extractLatLonFromRow(x, keys);
+        const land = landKey ? (x?.[landKey]||"").toString().trim() : "";
+        return {
+          name:(x[nameKey]||"").trim(),
+          ort:(x[ortKey]||"").trim(),
+          lose:(x[loseKey]||"").trim().toLowerCase(),
+          sackware:(x[sackKey]||"").trim().toLowerCase(),
+          sonstige:(x[sonstKey]||"").trim().toLowerCase(),
+          land,
+          country_code: countryCodeFromLand(land),
+          lat, lon
+        };
+      })
       .filter(x=>x.name && x.ort);
   }
 
-  // UNIT STATE
+  async function coordForRow(row){
+    if (isFinite(row.lat) && isFinite(row.lon)) {
+      return { lat: row.lat, lon: row.lon, country_code: row.country_code || "" };
+    }
+    // fallback (wenn mal leer)
+    const c = await geocodeOnce(row.ort || row.name || "");
+    if (!c) return null;
+    return { lat: c.lat, lon: c.lon, country_code: row.country_code || c.country_code || "" };
+  }
+
   const unit = {
     werke: [],
     kunden: [],
     alleMarker: [],
     selectedPoints: [],
     routeLine: null,
-    searchResultMarker: null,
 
     async init(){
       const [firmen, kunden] = await Promise.all([loadFirmen(), loadKunden()]);
@@ -923,9 +1040,8 @@ function createPelletsUnit(){
       unit.alleMarker = [];
       const bounds = L.latLngBounds();
 
-      // Werke
       for(const w of unit.werke){
-        const c = await geocodeOnce(w.ort);
+        const c = await coordForRow(w);
         if(!c) continue;
 
         const farbeInit = sackFilterAktiv() ? w.farbeSack : w.farbeWerk;
@@ -950,8 +1066,6 @@ function createPelletsUnit(){
           ort:w.ort,
           preis:w.preis,
           preisSack:w.preisSack,
-          keinPreisWerk:w.keinPreisWerk,
-          keinPreisSack:w.keinPreisSack,
           farbeWerk:w.farbeWerk,
           farbeSack:w.farbeSack,
           zert:(w.zert||"").toLowerCase(),
@@ -962,9 +1076,8 @@ function createPelletsUnit(){
         bounds.extend([c.lat,c.lon]);
       }
 
-      // Kunden
       for(const k of unit.kunden){
-        const c = await geocodeOnce(k.ort);
+        const c = await coordForRow(k);
         if(!c) continue;
 
         const isSackOnly = (k.sackware === "ja") && (k.lose !== "ja");
@@ -984,7 +1097,6 @@ function createPelletsUnit(){
           marker:m,
           name: k.name,
           ort: k.ort,
-          sonstige: k.sonstige,
           country_code: (c.country_code || "")
         });
 
@@ -996,7 +1108,6 @@ function createPelletsUnit(){
     },
 
     updateLayers(){
-      // remove all
       unit.alleMarker.forEach(m=>{ if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker); });
 
       const selectedCountries = getSelectedCountries();
@@ -1041,7 +1152,6 @@ function createPelletsUnit(){
           continue;
         }
 
-        // Sackware filter
         if (useSack) {
           const sNorm = (m.sack||"").toLowerCase().replace(/\s+/g,' ').trim();
           const hasFireflies = sNorm.includes("fireflies");
@@ -1051,7 +1161,6 @@ function createPelletsUnit(){
           if (wantFireflies && want15kg && !(hasFireflies || has15kg)) continue;
         }
 
-        // Zertifikate
         const z = m.zert || "";
         let zertOK = false;
         if(z.includes("enplus") && en) zertOK = true;
@@ -1080,7 +1189,6 @@ function createPelletsUnit(){
         if(!sichtbar) continue;
 
         m.marker.setStyle({color:aktiveFarbe, fillColor:aktiveFarbe});
-        if (m.marker.getTooltip()) m.marker.getTooltip().setContent( tooltipHtmlFromMarker(m) );
         map.addLayer(m.marker);
       }
     },
@@ -1163,16 +1271,16 @@ function createPelletsUnit(){
         return;
       }
 
+      // wenn nicht gefunden: normaler Geocode (Ort suchen)
       const c = await geocodeOnce(query);
       if(!c){ alert("Kein Treffer gefunden."); return; }
-
-      // set as first route point (wie bei dir)
-      unit.selectedPoints = [{ label: query, coord: { lat: c.lat, lon: c.lon } }];
 
       const marker = L.marker([c.lat, c.lon], { icon: ortIcon })
         .bindTooltip(`<b>Ort:</b> ${query}`, {sticky:true})
         .addTo(map);
       marker.openTooltip();
+
+      unit.selectedPoints = [{ label: query, coord: { lat: c.lat, lon: c.lon } }];
     }
   };
 
