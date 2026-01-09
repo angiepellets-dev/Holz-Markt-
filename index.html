@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pelletwerke – Europa Preiskarte</title>
+  <title>Europa Preiskarte – Unit Auswahl</title>
 
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -29,12 +29,11 @@
       padding:8px 10px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.15);
       font:14px system-ui,Arial,sans-serif;width:280px;
     }
-    .search-box input[type="text"]{
+    .search-box input[type="text"], .search-box select{
       width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;
       outline:none;box-sizing:border-box;margin-left:4px;
     }
     .search-hint{margin-top:6px;font-size:12px;opacity:.75;line-height:1.25;}
-
     .cert-box hr{border:none;height:1px;background:#eee;margin:6px 0;}
 
     .country-dropdown{position:relative;display:block;width:100%;margin-top:8px;}
@@ -53,18 +52,22 @@
       display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer;user-select:none;
     }
     .country-dropdown-menu label input[type="checkbox"]{margin:0;width:14px;height:14px;flex:0 0 auto;}
+
+    /* Start: alle Panels versteckt */
+    #panelSaegerestholz, #legendSaegerestholz,
+    #panelPellets, #legendPellets { display:none; }
   </style>
 </head>
 <body>
 
 <div id="map"></div>
 
-<!-- Suche + Länderfilter -->
+<!-- Suche + Länderfilter + Unit -->
 <div class="search-box">
   🔍 <input type="text" id="searchInput" placeholder="Firma, Kunde oder Ort/Adresse suchen…"/>
-  <div class="search-hint"></div>
+  <div class="search-hint" id="searchHint">Wähle zuerst eine Unit.</div>
 
-  <b style="display:block;margin-top:8px;">Land / Länder filtern</b>
+  <b style="display:block;margin-top:10px;">Land / Länder filtern</b>
   <div class="country-dropdown" id="countryDropdown">
     <div class="country-dropdown-button" id="countryDropdownBtn">Alle Länder</div>
     <div class="country-dropdown-menu" id="countryDropdownMenu">
@@ -88,15 +91,20 @@
       <label><input type="checkbox" class="countryChk" value="gb"> United Kingdom</label>
     </div>
   </div>
+
+  <b style="display:block;margin-top:10px;">Unit</b>
+  <select id="unitSelect">
+    <option value="" selected>Bitte auswählen…</option>
+    <option value="pellets">Pellets</option>
+    <option value="saegerestholz">Sägerestholz</option>
+  </select>
 </div>
 
-<!-- Zertifikate + Produkt -->
-<div class="cert-box">
+<!-- ====================== SÄGERESTHOLZ PANEL ====================== -->
+<div class="cert-box" id="panelSaegerestholz">
   <b>Zertifikate</b><br>
-  <label><input type="checkbox" id="chkEnPlus" checked> 1</label><br>
-  <label><input type="checkbox" id="chkDINplus" checked> 2</label><br>
-  <label><input type="checkbox" id="chkSURE" checked> 3</label><br>
-  <label><input type="checkbox" id="chkCPP" checked> 4</label><br>
+  <label><input type="checkbox" id="chkSURE" checked> SURE</label><br>
+  <label><input type="checkbox" id="chkPEFC" checked> PEFC</label><br>
   <label><input type="checkbox" id="chkOhneZert" checked> Kein Zertifikat</label>
   <hr>
   <b>Produkt</b><br>
@@ -105,8 +113,7 @@
   <label><input type="checkbox" id="chkSiebmaterial" checked> Siebmaterial</label>
 </div>
 
-<!-- Legende -->
-<div class="legend">
+<div class="legend" id="legendSaegerestholz">
   <b>Filter Farben</b><br>
   <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 260 €</label><br>
   <label><input type="checkbox" id="chkOrange" checked> 🟠 260–285 €</label><br>
@@ -115,27 +122,302 @@
   <label><input type="checkbox" id="chkKunden" checked> 🔷 Pelletwerk</label>
 </div>
 
+<!-- ====================== PELLETS PANEL ====================== -->
+<div class="cert-box" id="panelPellets">
+  <b>Zertifikate & Sackware</b><br>
+  <label><input type="checkbox" id="p_chkEnPlus" checked> EnPlus</label><br>
+  <label><input type="checkbox" id="p_chkDINplus" checked> DINplus</label><br>
+  <label><input type="checkbox" id="p_chkSURE" checked> SURE</label><br>
+  <label><input type="checkbox" id="p_chkCPP" checked> CPP</label><br>
+  <label><input type="checkbox" id="p_chkOhneZert" checked> Kein Zertifikat</label>
+  <hr>
+  <b>Sackware</b><br>
+  <label><input type="checkbox" id="p_chkSackFireflies"> FireFlies</label><br>
+  <label><input type="checkbox" id="p_chkSack15kg"> 15 kg</label>
+</div>
+
+<div class="legend" id="legendPellets">
+  <b>Filter Farben</b><br>
+  <label><input type="checkbox" id="p_chkGruen" checked> 🟢 ≤ 260 €</label><br>
+  <label><input type="checkbox" id="p_chkOrange" checked> 🟠 260–285 €</label><br>
+  <label><input type="checkbox" id="p_chkRot" checked> 🔴 ≥ 285 €</label><br>
+  <label><input type="checkbox" id="p_chkGrau" checked> ⚪ kein Preis</label><br>
+  <label><input type="checkbox" id="p_chkKunden" checked> 🔷 Pellethändler</label><br>
+  <label><input type="checkbox" id="p_chkSackKunden" checked> 🟣 Sackwaren Händler</label><br>
+  <label><input type="checkbox" id="p_chkSonstigeKunden" checked> 🔶 Sonstige Kunden</label>
+</div>
+
 <script>
-  // =========================
-  //   FORMEL-KONSTANTEN
-  // =========================
-  // WICHTIG: Hier musst du DEINE echten Werte eintragen.
-  // (Ich lasse Default-Werte drin, aber wenn die bei dir anders sind, sind Ergebnisse falsch.)
+/* =========================================================
+   GEMEINSAM: MAP + GEO + UI
+========================================================= */
 
-  // gemeinsame Marge
+const map = L.map("map", { maxZoom: 19 }).setView([51, 11], 5);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  minZoom: 4, maxZoom: 19, attribution: "&copy; OpenStreetMap"
+}).addTo(map);
+
+function colorForPrice(p, keinPreis) {
+  if (keinPreis) return "#9e9e9e";
+  if (!p || p <= 0 || isNaN(p)) return "#9e9e9e";
+  if (p <= 260) return "green";
+  if (p < 285) return "orange";
+  return "red";
+}
+
+// Geocache (gemeinsam)
+const GEO_CACHE_KEY = "geoCache_MULTI_EU_v1";
+const geoCache = JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}");
+const inFlight = new Map();
+
+async function geocodeOnce(q) {
+  if (geoCache[q] && geoCache[q].country_code) return geoCache[q];
+  if (inFlight.has(q)) return inFlight.get(q);
+
+  const p = (async ()=>{
+    const r = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(q)}&limit=1&accept-language=de`,
+      { headers: { "Accept": "application/json" } }
+    );
+    const d = await r.json();
+    if (d && d.length) {
+      const item = d[0];
+      const obj = {
+        lat: +item.lat,
+        lon: +item.lon,
+        country: item.address && item.address.country ? item.address.country : "",
+        country_code: item.address && item.address.country_code ? item.address.country_code.toLowerCase() : ""
+      };
+      geoCache[q] = obj;
+      localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(geoCache));
+      return obj;
+    }
+    return null;
+  })();
+
+  inFlight.set(q, p);
+  try { return await p; }
+  finally { inFlight.delete(q); }
+}
+
+async function geocodeWithFallback(queries){
+  for (const q of queries) {
+    const qq = (q || "").trim();
+    if (!qq) continue;
+    const res = await geocodeOnce(qq);
+    if (res) return res;
+  }
+  return null;
+}
+
+const blauesDreieck = L.divIcon({
+  className: "custom-triangle",
+  html: `<svg width="24" height="24" viewBox="0 0 24 24">
+           <polygon points="12,2 22,22 2,22" fill="blue" stroke="black" stroke-width="1"/>
+         </svg>`,
+  iconAnchor: [12,22],
+  popupAnchor: [0,-20]
+});
+const lilaDreieck = L.divIcon({
+  className: "custom-triangle-purple",
+  html: `<svg width="24" height="24" viewBox="0 0 24 24">
+           <polygon points="12,2 22,22 2,22" fill="purple" stroke="black" stroke-width="1"/>
+         </svg>`,
+  iconAnchor: [12,22],
+  popupAnchor: [0,-20]
+});
+const orangeDreieck = L.divIcon({
+  className: "custom-triangle-orange",
+  html: `<svg width="24" height="24" viewBox="0 0 24 24">
+           <polygon points="12,2 22,22 2,22" fill="orange" stroke="black" stroke-width="1"/>
+         </svg>`,
+  iconAnchor: [12,22],
+  popupAnchor: [0,-20]
+});
+const ortIcon = L.divIcon({
+  className: "custom-place",
+  html: `<svg width="26" height="26" viewBox="0 0 24 24">
+    <path d="M12 2c-3.3 0-6 2.7-6 6 0 4.5 6 14 6 14s6-9.5 6-14c0-3.3-2.7-6-6-6z" fill="#111" stroke="#fff" stroke-width="1.2"/>
+    <circle cx="12" cy="8" r="2.4" fill="#fff"/>
+  </svg>`,
+  iconAnchor: [13,24],
+  popupAnchor: [0,-18]
+});
+
+// Länderfilter UI
+function getSelectedCountries() {
+  const chks = document.querySelectorAll(".countryChk");
+  const selected = [];
+  chks.forEach(ch => { if (ch.checked) selected.push(ch.value); });
+  if (selected.length === 0 || selected.includes("all")) return ["all"];
+  return selected;
+}
+function updateCountryButtonLabel() {
+  const btn = document.getElementById("countryDropdownBtn");
+  if (!btn) return;
+  const selected = getSelectedCountries();
+  if (selected.length === 1 && selected[0] === "all") btn.textContent = "Alle Länder";
+  else {
+    const names = {
+      de:"DE", at:"AT", pl:"PL", cz:"CZ", fr:"FR", ch:"CH", be:"BE", sk:"SK",
+      dk:"DK", ee:"EE", fi:"FI", it:"IT", lv:"LV", lt:"LT", nl:"NL", se:"SE", gb:"GB"
+    };
+    btn.textContent = selected.map(c => names[c] || c.toUpperCase()).join(", ");
+  }
+}
+document.getElementById("countryDropdownBtn").addEventListener("click", () => {
+  const menu = document.getElementById("countryDropdownMenu");
+  menu.style.display = (menu.style.display === "block") ? "none" : "block";
+});
+document.addEventListener("click", (e) => {
+  const dd = document.getElementById("countryDropdown");
+  const menu = document.getElementById("countryDropdownMenu");
+  if (!dd || !menu) return;
+  if (!dd.contains(e.target)) menu.style.display = "none";
+});
+document.addEventListener("change", (e) => {
+  if (e.target && e.target.classList && e.target.classList.contains("countryChk")) {
+    if (e.target.value === "all" && e.target.checked) {
+      document.querySelectorAll(".countryChk").forEach(ch => { if (ch.value !== "all") ch.checked = false; });
+    } else if (e.target.value !== "all" && e.target.checked) {
+      const allChk = document.querySelector('.countryChk[value="all"]');
+      if (allChk) allChk.checked = false;
+    }
+    updateCountryButtonLabel();
+    if (currentUnit && currentUnit.updateLayers) currentUnit.updateLayers();
+  }
+});
+
+/* =========================================================
+   UNIT MANAGER (Switch Pellets / Sägerestholz)
+========================================================= */
+
+let currentUnit = null;
+
+function hideAllPanels(){
+  document.getElementById("panelSaegerestholz").style.display = "none";
+  document.getElementById("legendSaegerestholz").style.display = "none";
+  document.getElementById("panelPellets").style.display = "none";
+  document.getElementById("legendPellets").style.display = "none";
+}
+
+function clearMapState(unit){
+  if (!unit) return;
+  // remove markers
+  (unit.alleMarker || []).forEach(m => {
+    if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker);
+  });
+  // remove route line
+  if (unit.routeLine && map.hasLayer(unit.routeLine)) {
+    map.removeLayer(unit.routeLine);
+  }
+  unit.routeLine = null;
+  unit.selectedPoints = [];
+  // remove temp marker if unit has
+  if (unit.tempSearchMarker && map.hasLayer(unit.tempSearchMarker)) map.removeLayer(unit.tempSearchMarker);
+  unit.tempSearchMarker = null;
+  if (unit.searchResultMarker && map.hasLayer(unit.searchResultMarker)) map.removeLayer(unit.searchResultMarker);
+  unit.searchResultMarker = null;
+  map.closePopup();
+}
+
+document.getElementById("unitSelect").addEventListener("change", async (e) => {
+  const v = e.target.value;
+  const hint = document.getElementById("searchHint");
+
+  // clear old unit
+  if (currentUnit) clearMapState(currentUnit);
+  currentUnit = null;
+
+  hideAllPanels();
+
+  if (!v) {
+    hint.textContent = "Wähle zuerst eine Unit.";
+    return;
+  }
+
+  if (v === "saegerestholz") {
+    hint.textContent = "Sägerestholz aktiv. 2 Punkte klicken → Route + Preis.";
+    document.getElementById("panelSaegerestholz").style.display = "block";
+    document.getElementById("legendSaegerestholz").style.display = "block";
+    currentUnit = createSaegerestholzUnit();
+  }
+
+  if (v === "pellets") {
+    hint.textContent = "Pellets aktiv. 2 Punkte klicken → Route + Preis.";
+    document.getElementById("panelPellets").style.display = "block";
+    document.getElementById("legendPellets").style.display = "block";
+    currentUnit = createPelletsUnit();
+  }
+
+  try{
+    await currentUnit.init();
+  }catch(err){
+    console.error(err);
+    alert("Fehler beim Laden der Unit. Konsole (F12) anschauen.");
+  }
+});
+
+// Suche: leitet an aktive Unit weiter
+document.getElementById("searchInput").addEventListener("keydown", async (e) => {
+  if (e.key !== "Enter") return;
+  const q = (e.target.value || "").trim();
+  if (!q) return;
+
+  if (!currentUnit) {
+    alert("Bitte zuerst eine Unit auswählen.");
+    return;
+  }
+  try{
+    await currentUnit.searchOrGeocode(q);
+  }catch(err){
+    console.error(err);
+    alert("Fehler bei Suche/Geocoding.");
+  }
+});
+
+// Map click: route entfernen (gemeinsam)
+map.on('click', (e) => {
+  const t = e.originalEvent && e.originalEvent.target;
+  if (t && t.closest) {
+    if (t.closest('.leaflet-marker-icon') ||
+        t.closest('.leaflet-popup') ||
+        t.closest('.leaflet-interactive')) return;
+  }
+  if (currentUnit) {
+    if (currentUnit.routeLine) { map.removeLayer(currentUnit.routeLine); currentUnit.routeLine = null; }
+    currentUnit.selectedPoints = [];
+    map.closePopup();
+  }
+});
+
+// Checkbox change: update layers je Unit (wir hören global auf checkbox)
+document.addEventListener("change", (e) => {
+  if (!currentUnit) return;
+  if (e.target && e.target.matches('input[type="checkbox"]') && !e.target.classList.contains("countryChk")) {
+    currentUnit.updateLayers();
+  }
+});
+
+/* =========================================================
+   UNIT: SÄGERESTHOLZ (dein aktueller Code, minimal angepasst)
+========================================================= */
+
+function createSaegerestholzUnit(){
+  // Konfiguration (wie bei dir)
+  const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/gviz/tq?tqx=out:csv&gid=0";
+  const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/gviz/tq?tqx=out:csv&gid=0";
+
+  // Formeln
   const MARGE = 1.05;
-
-  // Hackschnitzel: (EK + ((km * kmSatz) / TEILER)) * MARGE
   const HACKS_TEILER = 90;
-  const HACKS_KM_UNTER_GLEICH_200 = 2.15;   // km-Satz <= 200 km
-  const HACKS_KM_UEBER_200        = 2.15;   // km-Satz > 200 km  <-- ÄNDERN, falls bei dir anders!
+  const HACKS_KM_UNTER_GLEICH_200 = 2.15;
+  const HACKS_KM_UEBER_200        = 2.15;
 
-  // Sägespäne: (EK + ((km * kmSatz) / TEILER)) * MARGE
   const SAEG_TEILER = 90;
-  const SAEG_KM_UNTER_GLEICH_200 = 2.15;    // <-- ÄNDERN, falls bei dir anders!
-  const SAEG_KM_UEBER_200        = 2.15;    // <-- ÄNDERN, falls bei dir anders!
+  const SAEG_KM_UNTER_GLEICH_200 = 2.15;
+  const SAEG_KM_UEBER_200        = 2.15;
 
-  // Siebmaterial: =(((EK*21,5)+(1,85*km))/11,8)*1,05
   const SIEB_TONNE = 21.50;
   const SIEB_KM_SATZ = 1.85;
   const SIEB_ATRO = 11.8;
@@ -145,100 +427,23 @@
     const kmSatz = (km <= 200) ? HACKS_KM_UNTER_GLEICH_200 : HACKS_KM_UEBER_200;
     return (ek + ((km * kmSatz) / HACKS_TEILER)) * MARGE;
   }
-
   function calcSaegespaene(ek, km){
     if (!(isFinite(ek) && ek > 0)) return null;
     const kmSatz = (km <= 200) ? SAEG_KM_UNTER_GLEICH_200 : SAEG_KM_UEBER_200;
     return (ek + ((km * kmSatz) / SAEG_TEILER)) * MARGE;
   }
-
   function calcSiebmaterial(ek, km){
     if (!(isFinite(ek) && ek > 0)) return null;
     return (((ek * SIEB_TONNE) + (SIEB_KM_SATZ * km)) / SIEB_ATRO) * MARGE;
   }
 
-  // Karte
-  const map = L.map("map", { maxZoom: 19 }).setView([51, 11], 5);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    minZoom: 4, maxZoom: 19, attribution: "&copy; OpenStreetMap"
-  }).addTo(map);
-
-  function colorForPrice(p, keinPreis) {
-    if (keinPreis) return "#9e9e9e";
-    if (!p || p <= 0 || isNaN(p)) return "#9e9e9e";
-    if (p <= 260) return "green";
-    if (p < 285) return "orange";
-    return "red";
+  function normProduktName(p){
+    const s = (p || "").toLowerCase();
+    if (s.includes("hackschnitzel")) return "hackschnitzel";
+    if (s.includes("sägespäne") || s.includes("saegespaene") || s.includes("sägespaene") || s.includes("saegespäne")) return "saegespaene";
+    if (s.includes("siebmaterial")) return "siebmaterial";
+    return "";
   }
-
-  // GeoCache
-  const GEO_CACHE_KEY = "geoCacheProdukte_EU_v3";
-  const geoCache = JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}");
-  const inFlight = new Map();
-
-  async function geocodeOnce(q) {
-    if (geoCache[q] && geoCache[q].country_code) return geoCache[q];
-    if (inFlight.has(q)) return inFlight.get(q);
-
-    const p = (async ()=>{
-      const r = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(q)}&limit=1&accept-language=de`,
-        { headers: { "Accept": "application/json" } }
-      );
-      const d = await r.json();
-      if (d && d.length) {
-        const item = d[0];
-        const obj = {
-          lat: +item.lat,
-          lon: +item.lon,
-          country: item.address && item.address.country ? item.address.country : "",
-          country_code: item.address && item.address.country_code ? item.address.country_code.toLowerCase() : ""
-        };
-        geoCache[q] = obj;
-        localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(geoCache));
-        return obj;
-      }
-      return null;
-    })();
-
-    inFlight.set(q, p);
-    try { return await p; }
-    finally { inFlight.delete(q); }
-  }
-
-  async function geocodeWithFallback(queries){
-    for (const q of queries) {
-      const qq = (q || "").trim();
-      if (!qq) continue;
-      const res = await geocodeOnce(qq);
-      if (res) return res;
-    }
-    return null;
-  }
-
-  // Icons
-  const blauesDreieck = L.divIcon({
-    className: "custom-triangle",
-    html: `<svg width="24" height="24" viewBox="0 0 24 24">
-             <polygon points="12,2 22,22 2,22" fill="blue" stroke="black" stroke-width="1"/>
-           </svg>`,
-    iconAnchor: [12,22],
-    popupAnchor: [0,-20]
-  });
-
-  const ortIcon = L.divIcon({
-    className: "custom-place",
-    html: `<svg width="26" height="26" viewBox="0 0 24 24">
-      <path d="M12 2c-3.3 0-6 2.7-6 6 0 4.5 6 14 6 14s6-9.5 6-14c0-3.3-2.7-6-6-6z" fill="#111" stroke="#fff" stroke-width="1.2"/>
-      <circle cx="12" cy="8" r="2.4" fill="#fff"/>
-    </svg>`,
-    iconAnchor: [13,24],
-    popupAnchor: [0,-18]
-  });
-
-  // Tabellen
-  const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/gviz/tq?tqx=out:csv&gid=0";
-  const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/gviz/tq?tqx=out:csv&gid=0";
 
   async function loadCsvAsObjects(url){
     const res = await fetch(url, { cache: "no-store" });
@@ -249,52 +454,6 @@
     return (parsed.data || []).filter(r => r && Object.keys(r).length);
   }
 
-  // Produkt-Namen
-  function normProduktName(p){
-    const s = (p || "").toLowerCase();
-    if (s.includes("hackschnitzel")) return "hackschnitzel";
-    if (s.includes("sägespäne") || s.includes("saegespaene") || s.includes("sägespaene") || s.includes("saegespäne")) return "saegespaene";
-    if (s.includes("siebmaterial")) return "siebmaterial";
-    return "";
-  }
-
-  // Tooltip Firma (NORMAL: zeigt Standardpreise aus Tabelle)
-  function tooltipHtmlFirma(m){
-    const landInfo = m.land ? `<br><b>Land:</b> ${m.land}` : "";
-    const place = `${m.plz ? m.plz+" " : ""}${m.ort || ""}`.trim();
-
-    const pH = m.prices?.hackschnitzel;
-    const pS = m.prices?.saegespaene;
-    const pM = m.prices?.siebmaterial;
-
-    const lineH = (pH !== undefined) ? `<b>Hackschnitzel:</b> ${isFinite(pH) && pH>0 ? pH.toFixed(2)+" €" : "–"}` : "";
-    const lineS = (pS !== undefined) ? `<b>Sägespäne:</b> ${isFinite(pS) && pS>0 ? pS.toFixed(2)+" €" : "–"}` : "";
-    const lineM = (pM !== undefined) ? `<b>Siebmaterial:</b> ${isFinite(pM) && pM>0 ? pM.toFixed(2)+" €" : "–"}` : "";
-
-    const lines = [lineH,lineS,lineM].filter(Boolean).join("<br>");
-    return `<b>${m.firma}</b><br>${place}${landInfo}${lines ? "<br>"+lines : ""}`;
-  }
-
-  // Markerfarbe = günstigster aktiver Preis (für Farbfiler)
-  function activePriceForFirma(w){
-    const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
-    const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
-    const showSieb  = document.getElementById("chkSiebmaterial")?.checked ?? true;
-
-    const pH = w.prices?.hackschnitzel;
-    const pS = w.prices?.saegespaene;
-    const pM = w.prices?.siebmaterial;
-
-    const list = [];
-    if (showHacks && isFinite(pH) && pH > 0) list.push(pH);
-    if (showSaeg  && isFinite(pS) && pS > 0) list.push(pS);
-    if (showSieb  && isFinite(pM) && pM > 0) list.push(pM);
-
-    if (!list.length) return { price: 0, keinPreis: true };
-    return { price: Math.min(...list), keinPreis: false };
-  }
-
-  // Parser Firmen: produkt/preis, produkt_2/preis_2, produkt_3/preis_3
   function parseFirmen(rows){
     const lc = (s)=>String(s||"").toLowerCase().trim();
     const keys = Object.keys(rows[0]||{});
@@ -304,7 +463,10 @@
     const plzKey   = findKey(["plz","zip","postcode","postleitzahl"]) || "plz";
     const ortKey   = findKey(["ort","stadt","location","standort","adresse"]) || "ort";
     const landKey  = findKey(["land","country"]) || "land";
-    const zertKey  = keys.find(k => ["zertifikate","zertifikat","zert","cert"].includes(lc(k)));
+
+    const zertKeyQ = keys[16];
+    const zertKeyFallback = keys.find(k => ["zertifikate","zertifikat","zert","cert"].includes(lc(k)));
+    const zertKey = zertKeyQ || zertKeyFallback;
 
     const produktKeys = keys.filter(k => lc(k).startsWith("produkt"));
     const preisKeys   = keys.filter(k => lc(k).startsWith("preis"));
@@ -338,7 +500,6 @@
     }).filter(w => w.firma && (w.plz || w.ort));
   }
 
-  // Parser Kunden: kunde/plz/ort/land
   function parseKunden(rows){
     const lc = (s)=>String(s||"").toLowerCase().trim();
     const keys = Object.keys(rows[0]||{});
@@ -357,15 +518,10 @@
     })).filter(k => k.name && (k.plz || k.ort));
   }
 
-  // State
-  let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
-  let tempSearchMarker = null;
-
   function buildQueries(obj){
     const plz = (obj.plz||"").trim();
     const ort = (obj.ort||"").trim();
     const land = (obj.land||"").trim();
-
     const q1 = `${plz} ${ort}, ${land}`.replace(/\s+/g," ").trim();
     const q2 = `${plz} ${ort}`.replace(/\s+/g," ").trim();
     const q3 = `${ort}, ${land}`.replace(/\s+/g," ").trim();
@@ -373,341 +529,655 @@
     return [q1,q2,q3,q4];
   }
 
-  async function ladeDaten(){
-    const [firmenRows, kundenRows] = await Promise.all([
-      loadCsvAsObjects(sheetUrlFirmen),
-      loadCsvAsObjects(sheetUrlKunden)
-    ]);
-    werke = parseFirmen(firmenRows);
-    kunden = parseKunden(kundenRows);
+  function tooltipHtmlFirma(m){
+    const landInfo = m.land ? `<br><b>Land:</b> ${m.land}` : "";
+    const place = `${m.plz ? m.plz+" " : ""}${m.ort || ""}`.trim();
+
+    const pH = m.prices?.hackschnitzel;
+    const pS = m.prices?.saegespaene;
+    const pM = m.prices?.siebmaterial;
+
+    const lineH = (pH !== undefined) ? `<b>Hackschnitzel:</b> ${isFinite(pH) && pH>0 ? pH.toFixed(2)+" €" : "–"}` : "";
+    const lineS = (pS !== undefined) ? `<b>Sägespäne:</b> ${isFinite(pS) && pS>0 ? pS.toFixed(2)+" €" : "–"}` : "";
+    const lineM = (pM !== undefined) ? `<b>Siebmaterial:</b> ${isFinite(pM) && pM>0 ? pM.toFixed(2)+" €" : "–"}` : "";
+
+    const lines = [lineH,lineS,lineM].filter(Boolean).join("<br>");
+    return `<b>${m.firma}</b><br>${place}${landInfo}${lines ? "<br>"+lines : ""}`;
   }
 
-  async function buildMap(){
-    alleMarker = [];
-    const bounds = L.latLngBounds();
-
-    const firmGeo = await Promise.all(werke.map(async (w)=>({ w, c: await geocodeWithFallback(buildQueries(w)) })));
-    for (const item of firmGeo){
-      if(!item.c) continue;
-      const { w, c } = item;
-
-      const ap = activePriceForFirma(w);
-      const initColor = colorForPrice(ap.price, ap.keinPreis);
-
-      const circle = L.circleMarker([c.lat,c.lon],{
-        radius:8,
-        color:initColor,
-        fillColor:initColor,
-        fillOpacity:0.85
-      });
-
-      const markerObj = {
-        type:"firma",
-        marker: circle,
-        firma:w.firma,
-        plz:w.plz,
-        ort:w.ort,
-        land:w.land,
-        zert:(w.zert||"").toLowerCase(),
-        country_code:(c.country_code||""),
-        prices: w.prices || {}
-      };
-
-      circle.bindTooltip("", {sticky:true})
-        .on("tooltipopen", ()=> circle.getTooltip().setContent(tooltipHtmlFirma(markerObj)))
-        .on("click",()=>handleMarkerClick(markerObj.firma,c));
-
-      alleMarker.push(markerObj);
-      bounds.extend([c.lat,c.lon]);
-    }
-
-    const kundGeo = await Promise.all(kunden.map(async (k)=>({ k, c: await geocodeWithFallback(buildQueries(k)) })));
-    for (const item of kundGeo){
-      if(!item.c) continue;
-      const { k, c } = item;
-
-      const place = `${k.plz ? k.plz+" " : ""}${k.ort || ""}`.trim();
-      const m = L.marker([c.lat,c.lon],{icon:blauesDreieck})
-        .bindTooltip(`<b>${k.name}</b><br>${place}${k.land ? "<br>" + k.land : ""}`,{sticky:true})
-        .on("click",()=>handleMarkerClick(k.name,c));
-
-      alleMarker.push({ type:"kunde", marker:m, country_code:(c.country_code||"") });
-      bounds.extend([c.lat,c.lon]);
-    }
-
-    if(bounds.isValid()) map.fitBounds(bounds.pad(0.15));
-    updateLayers();
-  }
-
-  // Länderfilter
-  function getSelectedCountries() {
-    const chks = document.querySelectorAll(".countryChk");
-    const selected = [];
-    chks.forEach(ch => { if (ch.checked) selected.push(ch.value); });
-    if (selected.length === 0 || selected.includes("all")) return ["all"];
-    return selected;
-  }
-
-  function updateCountryButtonLabel() {
-    const btn = document.getElementById("countryDropdownBtn");
-    if (!btn) return;
-
-    const selected = getSelectedCountries();
-    if (selected.length === 1 && selected[0] === "all") btn.textContent = "Alle Länder";
-    else {
-      const names = {
-        de:"DE", at:"AT", pl:"PL", cz:"CZ", fr:"FR", ch:"CH", be:"BE", sk:"SK",
-        dk:"DK", ee:"EE", fi:"FI", it:"IT", lv:"LV", lt:"LT", nl:"NL", se:"SE", gb:"GB"
-      };
-      btn.textContent = selected.map(c => names[c] || c.toUpperCase()).join(", ");
-    }
-  }
-
-  function updateLayers(){
-    alleMarker.forEach(m=>{
-      if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker);
-    });
-
-    const selectedCountries = getSelectedCountries();
-    const noCountryFilter = selectedCountries.length === 1 && selectedCountries[0] === "all";
-
-    const en   = document.getElementById("chkEnPlus")?.checked ?? true;
-    const din  = document.getElementById("chkDINplus")?.checked ?? true;
-    const sure = document.getElementById("chkSURE")?.checked ?? true;
-    const cpp  = document.getElementById("chkCPP")?.checked ?? true;
-    const ohne = document.getElementById("chkOhneZert")?.checked ?? true;
-
-    const gruen  = document.getElementById("chkGruen")?.checked ?? true;
-    const orange = document.getElementById("chkOrange")?.checked ?? true;
-    const rot    = document.getElementById("chkRot")?.checked ?? true;
-    const grau   = document.getElementById("chkGrau")?.checked ?? true;
-
-    const kundenFlag = document.getElementById("chkKunden")?.checked ?? true;
-
+  function activePriceForFirma(w){
     const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
     const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
     const showSieb  = document.getElementById("chkSiebmaterial")?.checked ?? true;
 
-    for(const m of alleMarker){
-      if(m.type === "kunde"){
-        if (kundenFlag) {
-          if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) map.addLayer(m.marker);
+    const pH = w.prices?.hackschnitzel;
+    const pS = w.prices?.saegespaene;
+    const pM = w.prices?.siebmaterial;
+
+    const list = [];
+    if (showHacks && isFinite(pH) && pH > 0) list.push(pH);
+    if (showSaeg  && isFinite(pS) && pS > 0) list.push(pS);
+    if (showSieb  && isFinite(pM) && pM > 0) list.push(pM);
+
+    if (!list.length) return { price: 0, keinPreis: true };
+    return { price: Math.min(...list), keinPreis: false };
+  }
+
+  // UNIT STATE
+  const unit = {
+    werke: [],
+    kunden: [],
+    alleMarker: [],
+    selectedPoints: [],
+    routeLine: null,
+    tempSearchMarker: null,
+
+    async init(){
+      const [firmenRows, kundenRows] = await Promise.all([
+        loadCsvAsObjects(sheetUrlFirmen),
+        loadCsvAsObjects(sheetUrlKunden)
+      ]);
+      unit.werke = parseFirmen(firmenRows);
+      unit.kunden = parseKunden(kundenRows);
+      await unit.buildMap();
+    },
+
+    async buildMap(){
+      unit.alleMarker = [];
+      const bounds = L.latLngBounds();
+
+      const firmGeo = await Promise.all(unit.werke.map(async (w)=>({ w, c: await geocodeWithFallback(buildQueries(w)) })));
+      for (const item of firmGeo){
+        if(!item.c) continue;
+        const { w, c } = item;
+
+        const ap = activePriceForFirma(w);
+        const initColor = colorForPrice(ap.price, ap.keinPreis);
+
+        const circle = L.circleMarker([c.lat,c.lon],{
+          radius:8,
+          color:initColor,
+          fillColor:initColor,
+          fillOpacity:0.85
+        });
+
+        const markerObj = {
+          type:"firma",
+          marker: circle,
+          firma:w.firma,
+          plz:w.plz,
+          ort:w.ort,
+          land:w.land,
+          zert:(w.zert||"").toLowerCase(),
+          country_code:(c.country_code||""),
+          prices: w.prices || {}
+        };
+
+        circle.bindTooltip("", {sticky:true})
+          .on("tooltipopen", ()=> circle.getTooltip().setContent(tooltipHtmlFirma(markerObj)))
+          .on("click",()=>unit.handleMarkerClick(markerObj.firma,c));
+
+        unit.alleMarker.push(markerObj);
+        bounds.extend([c.lat,c.lon]);
+      }
+
+      const kundGeo = await Promise.all(unit.kunden.map(async (k)=>({ k, c: await geocodeWithFallback(buildQueries(k)) })));
+      for (const item of kundGeo){
+        if(!item.c) continue;
+        const { k, c } = item;
+        const place = `${k.plz ? k.plz+" " : ""}${k.ort || ""}`.trim();
+
+        const m = L.marker([c.lat,c.lon],{icon:blauesDreieck})
+          .bindTooltip(`<b>${k.name}</b><br>${place}${k.land ? "<br>" + k.land : ""}`,{sticky:true})
+          .on("click",()=>unit.handleMarkerClick(k.name,c));
+
+        unit.alleMarker.push({ type:"kunde", marker:m, country_code:(c.country_code||"") });
+        bounds.extend([c.lat,c.lon]);
+      }
+
+      if(bounds.isValid()) map.fitBounds(bounds.pad(0.15));
+      unit.updateLayers();
+    },
+
+    updateLayers(){
+      // remove all
+      unit.alleMarker.forEach(m=>{ if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker); });
+
+      const selectedCountries = getSelectedCountries();
+      const noCountryFilter = selectedCountries.length === 1 && selectedCountries[0] === "all";
+
+      const sure = document.getElementById("chkSURE")?.checked ?? true;
+      const pefc = document.getElementById("chkPEFC")?.checked ?? true;
+      const ohne = document.getElementById("chkOhneZert")?.checked ?? true;
+
+      const gruen  = document.getElementById("chkGruen")?.checked ?? true;
+      const orange = document.getElementById("chkOrange")?.checked ?? true;
+      const rot    = document.getElementById("chkRot")?.checked ?? true;
+      const grau   = document.getElementById("chkGrau")?.checked ?? true;
+
+      const kundenFlag = document.getElementById("chkKunden")?.checked ?? true;
+
+      const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
+      const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
+      const showSieb  = document.getElementById("chkSiebmaterial")?.checked ?? true;
+
+      for(const m of unit.alleMarker){
+        if(m.type === "kunde"){
+          if (kundenFlag) {
+            if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) map.addLayer(m.marker);
+          }
+          continue;
         }
-        continue;
-      }
 
-      const hasH = m.prices?.hackschnitzel !== undefined;
-      const hasS = m.prices?.saegespaene !== undefined;
-      const hasM = m.prices?.siebmaterial !== undefined;
+        const hasH = m.prices?.hackschnitzel !== undefined;
+        const hasS = m.prices?.saegespaene !== undefined;
+        const hasM = m.prices?.siebmaterial !== undefined;
 
-      if (!showHacks && !showSaeg && !showSieb) continue;
-      if ((showHacks || showSaeg || showSieb) && !(
-        (showHacks && hasH) || (showSaeg && hasS) || (showSieb && hasM)
-      )) continue;
+        if (!showHacks && !showSaeg && !showSieb) continue;
+        if ((showHacks || showSaeg || showSieb) && !(
+          (showHacks && hasH) || (showSaeg && hasS) || (showSieb && hasM)
+        )) continue;
 
-      const z = (m.zert || "");
-      let zertOK = false;
-      if(z.includes("enplus") && en) zertOK = true;
-      if(z.includes("dinplus") && din) zertOK = true;
-      if(z.includes("sure") && sure) zertOK = true;
-      if(z.includes("cpp") && cpp) zertOK = true;
-      if(!z && ohne) zertOK = true;
-      if(!zertOK) continue;
+        const z = (m.zert || "").toLowerCase().trim();
+        let zertOK = false;
+        if (z.includes("sure") && sure) zertOK = true;
+        if (z.includes("pefc") && pefc) zertOK = true;
+        if (!z && ohne) zertOK = true;
+        if (!zertOK) continue;
 
-      if (!noCountryFilter) {
-        if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
-      }
-
-      const ap = activePriceForFirma(m);
-      const aktiveFarbe = colorForPrice(ap.price, ap.keinPreis);
-
-      const isGruen  = aktiveFarbe === "green";
-      const isOrange = aktiveFarbe === "orange";
-      const isRot    = aktiveFarbe === "red";
-      const isGrau   = aktiveFarbe === "#9e9e9e";
-
-      let sichtbar = false;
-      if(isGruen && gruen) sichtbar = true;
-      if(isOrange && orange) sichtbar = true;
-      if(isRot && rot) sichtbar = true;
-      if(isGrau && grau) sichtbar = true;
-      if(!sichtbar) continue;
-
-      if (m.marker && m.marker.setStyle) m.marker.setStyle({ color: aktiveFarbe, fillColor: aktiveFarbe });
-      if (m.marker && m.marker.getTooltip) m.marker.getTooltip().setContent( tooltipHtmlFirma(m) );
-
-      map.addLayer(m.marker);
-    }
-  }
-
-  // ROUTE
-  function handleMarkerClick(label,coord){
-    selectedPoints.push({label,coord});
-    if(selectedPoints.length===2){
-      const [a,b]=selectedPoints;
-      showRoute(a,b);
-      selectedPoints=[];
-    }
-  }
-
-  async function showRoute(a,b){
-    const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if(!(data.routes && data.routes.length)){
-      alert("Keine Route gefunden!");
-      return;
-    }
-
-    const route = data.routes[0];
-    const distKm = route.distance / 1000;
-    const distTxt = distKm.toFixed(1);
-
-    const durationMin = route.duration / 60;
-    const hours = Math.floor(durationMin/60);
-    const minutes = Math.round(durationMin%60);
-    const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
-
-    const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
-
-    // welche der beiden Punkte ist eine Firma?
-    const firmaObjA = alleMarker.find(m => m.type==="firma" && m.firma === a.label);
-    const firmaObjB = alleMarker.find(m => m.type==="firma" && m.firma === b.label);
-    const firmeneintrag = firmaObjA || firmaObjB;
-
-    const preisH = firmeneintrag?.prices?.hackschnitzel;
-    const preisS = firmeneintrag?.prices?.saegespaene;
-    const preisM = firmeneintrag?.prices?.siebmaterial;
-
-    // NUR Strecken-Endpreise (kein EK anzeigen)
-    const totalH = (preisH !== undefined && isFinite(preisH) && preisH > 0) ? calcHackschnitzel(preisH, distKm) : null;
-    const totalS = (preisS !== undefined && isFinite(preisS) && preisS > 0) ? calcSaegespaene(preisS, distKm) : null;
-    const totalM = (preisM !== undefined && isFinite(preisM) && preisM > 0) ? calcSiebmaterial(preisM, distKm) : null;
-
-    // Route zeichnen (NUR 1x!)
-    if(routeLine) map.removeLayer(routeLine);
-    routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
-
-    const mid = coords[Math.floor(coords.length/2)];
-
-    const lineH = `<b>Hackschnitzel:</b> ${totalH !== null ? `<span style="color:green;font-size:1.05em">${totalH.toFixed(2)} €</span>` : "–"}`;
-    const lineS = `<b>Sägespäne:</b> ${totalS !== null ? `<span style="color:green;font-size:1.05em">${totalS.toFixed(2)} €</span>` : "–"}`;
-    const lineM = `<b>Siebmaterial:</b> ${totalM !== null ? `<span style="color:green;font-size:1.05em">${totalM.toFixed(2)} €</span>` : "–"}`;
-
-    const popupHtml = `
-      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-      <b>Entfernung:</b> ${distTxt} km<br>
-      <b>Dauer:</b> ${durationStr}<br>
-      <hr style="border:none;height:1px;background:#eee;margin:8px 0;">
-      ${firmeneintrag ? `
-        ${lineH}<br>
-        ${lineS}<br>
-        ${lineM}
-      ` : `
-        <b>Hinweis:</b> Keine Firma ausgewählt – keine Werkpreise verfügbar.
-      `}
-    `;
-
-    L.popup().setLatLng(mid).setContent(popupHtml).openOn(map);
-    map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
-  }
-
-  map.on('click', (e) => {
-    const t = e.originalEvent && e.originalEvent.target;
-    if (t && t.closest) {
-      if (t.closest('.leaflet-marker-icon') ||
-          t.closest('.leaflet-popup') ||
-          t.closest('.leaflet-interactive')) return;
-    }
-    if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
-    selectedPoints = [];
-    map.closePopup();
-  });
-
-  // Suche (Marker oder Ort)
-  async function searchOrGeocode(query){
-    const hit = alleMarker.find(m =>
-      m.marker &&
-      m.marker.getTooltip &&
-      m.marker.getTooltip().getContent &&
-      String(m.marker.getTooltip().getContent()).toLowerCase().includes(query)
-    );
-    if (hit) {
-      const latlng = hit.marker.getLatLng();
-      map.setView(latlng, 9);
-      hit.marker.openTooltip();
-      handleMarkerClick(hit.type==="firma" ? hit.firma : query.toUpperCase(), { lat: latlng.lat, lon: latlng.lng, country_code: hit.country_code || "" });
-      return;
-    }
-
-    const c = await geocodeWithFallback([query]);
-    if(!c){ alert("Kein Treffer gefunden."); return; }
-
-    if (tempSearchMarker) map.removeLayer(tempSearchMarker);
-    tempSearchMarker = L.marker([c.lat, c.lon], { icon: ortIcon })
-      .bindTooltip(`<b>Ort:</b> ${query}`, {sticky:true})
-      .addTo(map);
-
-    map.setView([c.lat, c.lon], 10);
-    tempSearchMarker.openTooltip();
-
-    handleMarkerClick(`Ort: ${query}`, c);
-  }
-
-  // UI Events
-  document.addEventListener("change", e => {
-    if (e.target && e.target.matches('input[type="checkbox"]')) {
-      if (e.target.classList.contains("countryChk")) {
-        if (e.target.value === "all" && e.target.checked) {
-          document.querySelectorAll(".countryChk").forEach(ch => { if (ch.value !== "all") ch.checked = false; });
-        } else if (e.target.value !== "all" && e.target.checked) {
-          const allChk = document.querySelector('.countryChk[value="all"]');
-          if (allChk) allChk.checked = false;
+        if (!noCountryFilter) {
+          if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
         }
-        updateCountryButtonLabel();
-      }
-      updateLayers();
-    }
-  });
 
-  const countryBtn = document.getElementById("countryDropdownBtn");
-  if (countryBtn) {
-    countryBtn.addEventListener("click", () => {
-      const menu = document.getElementById("countryDropdownMenu");
-      if (!menu) return;
-      menu.style.display = (menu.style.display === "block") ? "none" : "block";
+        const ap = activePriceForFirma(m);
+        const aktiveFarbe = colorForPrice(ap.price, ap.keinPreis);
+
+        const isGruen  = aktiveFarbe === "green";
+        const isOrange = aktiveFarbe === "orange";
+        const isRot    = aktiveFarbe === "red";
+        const isGrau   = aktiveFarbe === "#9e9e9e";
+
+        let sichtbar = false;
+        if(isGruen && gruen) sichtbar = true;
+        if(isOrange && orange) sichtbar = true;
+        if(isRot && rot) sichtbar = true;
+        if(isGrau && grau) sichtbar = true;
+        if(!sichtbar) continue;
+
+        if (m.marker && m.marker.setStyle) m.marker.setStyle({ color: aktiveFarbe, fillColor: aktiveFarbe });
+        map.addLayer(m.marker);
+      }
+    },
+
+    handleMarkerClick(label,coord){
+      unit.selectedPoints.push({label,coord});
+      if(unit.selectedPoints.length===2){
+        const [a,b]=unit.selectedPoints;
+        unit.showRoute(a,b);
+        unit.selectedPoints=[];
+      }
+    },
+
+    async showRoute(a,b){
+      const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if(!(data.routes && data.routes.length)){
+        alert("Keine Route gefunden!");
+        return;
+      }
+
+      const route = data.routes[0];
+      const distKm = route.distance / 1000;
+      const distTxt = distKm.toFixed(1);
+
+      const durationMin = route.duration / 60;
+      const hours = Math.floor(durationMin/60);
+      const minutes = Math.round(durationMin%60);
+      const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
+
+      const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
+
+      const firmaObjA = unit.alleMarker.find(m => m.type==="firma" && m.firma === a.label);
+      const firmaObjB = unit.alleMarker.find(m => m.type==="firma" && m.firma === b.label);
+      const firmeneintrag = firmaObjA || firmaObjB;
+
+      const preisH = firmeneintrag?.prices?.hackschnitzel;
+      const preisS = firmeneintrag?.prices?.saegespaene;
+      const preisM = firmeneintrag?.prices?.siebmaterial;
+
+      const totalH = (preisH !== undefined && isFinite(preisH) && preisH > 0) ? calcHackschnitzel(preisH, distKm) : null;
+      const totalS = (preisS !== undefined && isFinite(preisS) && preisS > 0) ? calcSaegespaene(preisS, distKm) : null;
+      const totalM = (preisM !== undefined && isFinite(preisM) && preisM > 0) ? calcSiebmaterial(preisM, distKm) : null;
+
+      if(unit.routeLine) map.removeLayer(unit.routeLine);
+      unit.routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
+
+      const mid = coords[Math.floor(coords.length/2)];
+
+      const lineH = `<b>Hackschnitzel:</b> ${totalH !== null ? `<span style="color:green;font-size:1.05em">${totalH.toFixed(2)} €</span>` : "–"}`;
+      const lineS = `<b>Sägespäne:</b> ${totalS !== null ? `<span style="color:green;font-size:1.05em">${totalS.toFixed(2)} €</span>` : "–"}`;
+      const lineM = `<b>Siebmaterial:</b> ${totalM !== null ? `<span style="color:green;font-size:1.05em">${totalM.toFixed(2)} €</span>` : "–"}`;
+
+      const popupHtml = `
+        <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+        <b>Entfernung:</b> ${distTxt} km<br>
+        <b>Dauer:</b> ${durationStr}<br>
+        <hr style="border:none;height:1px;background:#eee;margin:8px 0;">
+        ${firmeneintrag ? `${lineH}<br>${lineS}<br>${lineM}` : `<b>Hinweis:</b> Keine Firma ausgewählt – keine Werkpreise verfügbar.`}
+      `;
+
+      L.popup().setLatLng(mid).setContent(popupHtml).openOn(map);
+      map.fitBounds(unit.routeLine.getBounds(),{padding:[40,40]});
+    },
+
+    async searchOrGeocode(query){
+      const q = query.toLowerCase().trim();
+
+      const hit = unit.alleMarker.find(m =>
+        m.marker && m.marker.getTooltip && m.marker.getTooltip().getContent &&
+        String(m.marker.getTooltip().getContent()).toLowerCase().includes(q)
+      );
+
+      if (hit) {
+        const latlng = hit.marker.getLatLng();
+        map.setView(latlng, 9);
+        if (hit.marker.openTooltip) hit.marker.openTooltip();
+        unit.handleMarkerClick(hit.type==="firma" ? hit.firma : q.toUpperCase(), { lat: latlng.lat, lon: latlng.lng, country_code: hit.country_code || "" });
+        return;
+      }
+
+      const c = await geocodeWithFallback([query]);
+      if(!c){ alert("Kein Treffer gefunden."); return; }
+
+      if (unit.tempSearchMarker) map.removeLayer(unit.tempSearchMarker);
+      unit.tempSearchMarker = L.marker([c.lat, c.lon], { icon: ortIcon })
+        .bindTooltip(`<b>Ort:</b> ${query}`, {sticky:true})
+        .addTo(map);
+
+      map.setView([c.lat, c.lon], 10);
+      unit.tempSearchMarker.openTooltip();
+
+      unit.handleMarkerClick(`Ort: ${query}`, c);
+    }
+  };
+
+  return unit;
+}
+
+/* =========================================================
+   UNIT: PELLETS (dein Code – kompakt, gleiche Logik)
+   (ohne Länderflächen-GeoJSON, damit es stabil + leichter ist)
+========================================================= */
+
+function createPelletsUnit(){
+  const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1f1oD1TlYWPRbD12d05yIGkqmXVygVt3ZHLk9U0bKoTs/export?format=csv";
+  const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/1DaiLyZbhJkdSQ1PHbJQmguIrDnGrrhiAVgJC4PJO8vA/export?format=csv&gid=0";
+
+  function sackFilterAktiv(){
+    const wantFireflies = document.getElementById("p_chkSackFireflies").checked;
+    const want15kg      = document.getElementById("p_chkSack15kg").checked;
+    return (wantFireflies || want15kg);
+  }
+
+  function tooltipHtmlFromMarker(m){
+    const useSack = sackFilterAktiv();
+    const preisNow = useSack && isFinite(m.preisSack) && m.preisSack > 0 ? m.preisSack : m.preis;
+    const preisTxt = isFinite(preisNow) && preisNow > 0 ? `${preisNow.toFixed(2)} €` : "–";
+    const zertInfo = m.zert ? `<br><b>Zertifikat:</b> ${m.zert}` : "";
+    const sackInfo = m.sack ? `<br><b>Sackware:</b> ${m.sack}` : "";
+    return `<b>${m.firma}</b><br>${m.ort}<br>${preisTxt}${zertInfo}${sackInfo}`;
+  }
+
+  function parseFirmenWithHeader(rows){
+    const lc = (s)=>String(s||"").toLowerCase();
+    const keys = Object.keys(rows[0]||{});
+    const findKey = (cands) => keys.find(k => cands.includes(lc(k)));
+
+    const nameKey = findKey(["firma","name","werk"]) || keys[0];
+    const ortKey  = findKey(["ort","stadt","location","standort","adresse"]) || keys[1];
+
+    const preisKey = findKey(["preis","price","€/t","euro","euro_t","werkspreis"]);
+    const sackPreisKey = findKey(["preis_sack","preis sack","sackpreis","bag_price","sackwarepreis","sackware preis","sackwarenpreis","preis_e"]);
+
+    const zertKey = findKey(["zertifikate","zertifikat","zert","cert"]);
+    const sackKey = findKey(["sackware","sack","bag","bagged"]);
+
+    return rows
+      .filter(x => (x?.[nameKey]||"").toString().trim() && (x?.[ortKey]||"").toString().trim())
+      .map(x => ({
+        firma: (x[nameKey]||"").toString().trim(),
+        ort: (x[ortKey]||"").toString().trim(),
+        preis: parseFloat(String(x?.[preisKey] ?? "0").replace(",", ".")),
+        preisSack: parseFloat(String(x?.[sackPreisKey] ?? "0").replace(",", ".")),
+        zert: (x?.[zertKey]||"").toString().trim(),
+        sack: (x?.[sackKey]||"").toString().trim()
+      }));
+  }
+
+  function normalizePreise(daten){
+    const gültigeWerk = daten.filter(w => !isNaN(w.preis) && w.preis > 0);
+    const gültigeSack = daten.filter(w => !isNaN(w.preisSack) && w.preisSack > 0);
+    const avgWerk = gültigeWerk.length ? (gültigeWerk.reduce((a,b)=>a+b.preis,0)/gültigeWerk.length) : 0;
+    const avgSack = gültigeSack.length ? (gültigeSack.reduce((a,b)=>a+b.preisSack,0)/gültigeSack.length) : 0;
+
+    return daten.map(w=>{
+      if(isNaN(w.preis)||w.preis<=0){w.preis=avgWerk;w.keinPreisWerk=true;}else w.keinPreisWerk=false;
+      if(isNaN(w.preisSack)||w.preisSack<=0){w.preisSack=avgSack;w.keinPreisSack=true;}else w.keinPreisSack=false;
+      w.farbeWerk = colorForPrice(w.preis, w.keinPreisWerk);
+      w.farbeSack = colorForPrice(w.preisSack, w.keinPreisSack);
+      return w;
     });
   }
 
-  document.addEventListener("click", (e) => {
-    const dd = document.getElementById("countryDropdown");
-    const menu = document.getElementById("countryDropdownMenu");
-    if (!dd || !menu) return;
-    if (!dd.contains(e.target)) menu.style.display = "none";
-  });
-
-  const searchInput = document.getElementById("searchInput");
-  if (searchInput) {
-    searchInput.addEventListener("keydown", async (e) => {
-      if(e.key === "Enter"){
-        const query = e.target.value.toLowerCase().trim();
-        if(!query) return;
-        try{ await searchOrGeocode(query); }
-        catch(err){ console.error(err); alert("Fehler beim Suchen/Geocoding."); }
-      }
-    });
+  async function loadFirmen(){
+    const res = await fetch(sheetUrlFirmen, {cache:"no-store"});
+    const text = await res.text();
+    const parsed = Papa.parse(text, { header:true, skipEmptyLines:true });
+    const rows = (parsed.data||[]).filter(r=>r && Object.keys(r).length);
+    const daten = parseFirmenWithHeader(rows);
+    return normalizePreise(daten);
   }
 
-  // Start
-  (async ()=>{
-    try{
-      await ladeDaten();
-      await buildMap();
-    }catch(err){
-      console.error(err);
-      alert("Fehler beim Laden. Bitte Konsole öffnen (F12) für Details.");
+  async function loadKunden(){
+    const res = await fetch(sheetUrlKunden, {cache:"no-store"});
+    const text = await res.text();
+    const parsed = Papa.parse(text, { header:true, skipEmptyLines:true });
+    const rows = (parsed.data||[]).filter(r=>r && Object.keys(r).length);
+
+    const headers = Object.keys(rows[0]||{});
+    const nameKey = headers.find(h=>h.toLowerCase().includes("name"))||"name";
+    const ortKey = headers.find(h=>["ort","adresse","standort","anschrift","stadt","location"].includes(h.toLowerCase()))||"ort";
+    const loseKey = headers.find(h=>h.toLowerCase()==="lose") || "lose";
+    const sackKey = headers.find(h=>h.toLowerCase()==="sackware") || "sackware";
+    const sonstKey = headers.find(h=>h.toLowerCase().includes("sonstige")) || "sonstige";
+
+    return rows
+      .map(x=>({
+        name:(x[nameKey]||"").trim(),
+        ort:(x[ortKey]||"").trim(),
+        lose:(x[loseKey]||"").trim().toLowerCase(),
+        sackware:(x[sackKey]||"").trim().toLowerCase(),
+        sonstige:(x[sonstKey]||"").trim().toLowerCase()
+      }))
+      .filter(x=>x.name && x.ort);
+  }
+
+  // UNIT STATE
+  const unit = {
+    werke: [],
+    kunden: [],
+    alleMarker: [],
+    selectedPoints: [],
+    routeLine: null,
+    searchResultMarker: null,
+
+    async init(){
+      const [firmen, kunden] = await Promise.all([loadFirmen(), loadKunden()]);
+      unit.werke = firmen;
+      unit.kunden = kunden;
+      await unit.buildMap();
+    },
+
+    async buildMap(){
+      unit.alleMarker = [];
+      const bounds = L.latLngBounds();
+
+      // Werke
+      for(const w of unit.werke){
+        const c = await geocodeOnce(w.ort);
+        if(!c) continue;
+
+        const farbeInit = sackFilterAktiv() ? w.farbeSack : w.farbeWerk;
+
+        const m = L.circleMarker([c.lat,c.lon],{radius:8,color:farbeInit,fillColor:farbeInit,fillOpacity:0.85})
+          .bindTooltip("", {sticky:true})
+          .on("tooltipopen", () => {
+            m.getTooltip().setContent( tooltipHtmlFromMarker({
+              firma:w.firma, ort:w.ort,
+              preis:w.preis, preisSack:w.preisSack,
+              zert:(w.zert||""),
+              sack:(w.sack||""),
+              country_code: (c.country_code || "")
+            }));
+          })
+          .on("click",()=>unit.handleMarkerClick(w.firma,c));
+
+        unit.alleMarker.push({
+          type:"firma",
+          marker:m,
+          firma:w.firma,
+          ort:w.ort,
+          preis:w.preis,
+          preisSack:w.preisSack,
+          keinPreisWerk:w.keinPreisWerk,
+          keinPreisSack:w.keinPreisSack,
+          farbeWerk:w.farbeWerk,
+          farbeSack:w.farbeSack,
+          zert:(w.zert||"").toLowerCase(),
+          sack:(w.sack||""),
+          country_code: (c.country_code || "")
+        });
+
+        bounds.extend([c.lat,c.lon]);
+      }
+
+      // Kunden
+      for(const k of unit.kunden){
+        const c = await geocodeOnce(k.ort);
+        if(!c) continue;
+
+        const isSackOnly = (k.sackware === "ja") && (k.lose !== "ja");
+        const isSonstige = (k.sonstige === "ja");
+
+        let type = "kunde";
+        let iconToUse = blauesDreieck;
+        if (isSonstige) { type = "sonstige"; iconToUse = orangeDreieck; }
+        else if (isSackOnly) { type = "sackkunde"; iconToUse = lilaDreieck; }
+
+        const m = L.marker([c.lat,c.lon],{icon:iconToUse})
+          .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
+          .on("click",()=>unit.handleMarkerClick(k.name,c));
+
+        unit.alleMarker.push({
+          type,
+          marker:m,
+          name: k.name,
+          ort: k.ort,
+          sonstige: k.sonstige,
+          country_code: (c.country_code || "")
+        });
+
+        bounds.extend([c.lat,c.lon]);
+      }
+
+      if(bounds.isValid()) map.fitBounds(bounds.pad(0.15));
+      unit.updateLayers();
+    },
+
+    updateLayers(){
+      // remove all
+      unit.alleMarker.forEach(m=>{ if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker); });
+
+      const selectedCountries = getSelectedCountries();
+      const noCountryFilter = selectedCountries.length === 1 && selectedCountries[0] === "all";
+
+      const en   = document.getElementById("p_chkEnPlus").checked;
+      const din  = document.getElementById("p_chkDINplus").checked;
+      const sure = document.getElementById("p_chkSURE").checked;
+      const cpp  = document.getElementById("p_chkCPP").checked;
+      const ohne = document.getElementById("p_chkOhneZert").checked;
+
+      const gruen  = document.getElementById("p_chkGruen").checked;
+      const orange = document.getElementById("p_chkOrange").checked;
+      const rot    = document.getElementById("p_chkRot").checked;
+      const grau   = document.getElementById("p_chkGrau").checked;
+
+      const kundenFlag = document.getElementById("p_chkKunden").checked;
+      const sackKundenFlag = document.getElementById("p_chkSackKunden").checked;
+      const sonstigeFlag = document.getElementById("p_chkSonstigeKunden").checked;
+
+      const wantFireflies = document.getElementById("p_chkSackFireflies").checked;
+      const want15kg      = document.getElementById("p_chkSack15kg").checked;
+      const useSack       = (wantFireflies || want15kg);
+
+      for(const m of unit.alleMarker){
+        if(m.type === "kunde"){
+          if (kundenFlag) {
+            if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) map.addLayer(m.marker);
+          }
+          continue;
+        }
+        if(m.type === "sackkunde"){
+          if (sackKundenFlag) {
+            if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) map.addLayer(m.marker);
+          }
+          continue;
+        }
+        if(m.type === "sonstige"){
+          if (sonstigeFlag) {
+            if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) map.addLayer(m.marker);
+          }
+          continue;
+        }
+
+        // Sackware filter
+        if (useSack) {
+          const sNorm = (m.sack||"").toLowerCase().replace(/\s+/g,' ').trim();
+          const hasFireflies = sNorm.includes("fireflies");
+          const has15kg = sNorm.includes("15 kg") || sNorm.includes("15kg");
+          if (wantFireflies && !want15kg && !hasFireflies) continue;
+          if (want15kg && !wantFireflies && !has15kg) continue;
+          if (wantFireflies && want15kg && !(hasFireflies || has15kg)) continue;
+        }
+
+        // Zertifikate
+        const z = m.zert || "";
+        let zertOK = false;
+        if(z.includes("enplus") && en) zertOK = true;
+        if(z.includes("dinplus") && din) zertOK = true;
+        if(z.includes("sure") && sure) zertOK = true;
+        if(z.includes("cpp") && cpp) zertOK = true;
+        if(!z && ohne) zertOK = true;
+        if(!zertOK) continue;
+
+        if (!noCountryFilter) {
+          if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
+        }
+
+        const aktiveFarbe = useSack ? m.farbeSack : m.farbeWerk;
+
+        const isGruen  = aktiveFarbe === "green";
+        const isOrange = aktiveFarbe === "orange";
+        const isRot    = aktiveFarbe === "red";
+        const isGrau   = aktiveFarbe === "#9e9e9e";
+
+        let sichtbar = false;
+        if(isGruen && gruen) sichtbar = true;
+        if(isOrange && orange) sichtbar = true;
+        if(isRot && rot) sichtbar = true;
+        if(isGrau && grau) sichtbar = true;
+        if(!sichtbar) continue;
+
+        m.marker.setStyle({color:aktiveFarbe, fillColor:aktiveFarbe});
+        if (m.marker.getTooltip()) m.marker.getTooltip().setContent( tooltipHtmlFromMarker(m) );
+        map.addLayer(m.marker);
+      }
+    },
+
+    handleMarkerClick(label,coord){
+      unit.selectedPoints.push({label,coord});
+      if(unit.selectedPoints.length===2){
+        const [a,b]=unit.selectedPoints;
+        unit.showRoute(a,b);
+        unit.selectedPoints=[];
+      }
+    },
+
+    async showRoute(a,b){
+      const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if(!(data.routes && data.routes.length)){
+        alert("Keine Route gefunden!");
+        return;
+      }
+
+      const route = data.routes[0];
+      const distKm = route.distance / 1000;
+      const distTxt = distKm.toFixed(1);
+
+      const durationMin = route.duration / 60;
+      const hours = Math.floor(durationMin/60);
+      const minutes = Math.round(durationMin%60);
+      const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
+
+      const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
+      const useSack = sackFilterAktiv();
+
+      const firmeneintrag = unit.werke.find(w => w.firma === a.label || w.firma === b.label);
+      const firmenPreis = firmeneintrag ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis) : 0;
+
+      const preisProKm = distKm < 250 ? 2.15 : 1.85;
+      const teilstrecke = distKm / 24;
+      const berechnung = teilstrecke * preisProKm;
+      const gesamt = ((berechnung + (firmenPreis||0)) * 1.05);
+
+      if(unit.routeLine) map.removeLayer(unit.routeLine);
+      unit.routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
+
+      const mid = coords[Math.floor(coords.length/2)];
+      L.popup().setLatLng(mid).setContent(`
+        <b>Route:</b> ${a.label} ↔ ${b.label}<br>
+        <b>Entfernung:</b> ${distTxt} km<br>
+        <b>Dauer:</b> ${durationStr}<br>
+        <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+        <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
+        <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt.toFixed(2)} €</span>
+      `).openOn(map);
+
+      map.fitBounds(unit.routeLine.getBounds(),{padding:[40,40]});
+    },
+
+    async searchOrGeocode(query){
+      const q = query.toLowerCase().trim();
+
+      const matches = unit.alleMarker.filter(m => {
+        const tooltipContent = (m.marker.getTooltip && m.marker.getTooltip().getContent)
+          ? String(m.marker.getTooltip().getContent()).toLowerCase()
+          : "";
+        const name = (m.firma || m.name || "").toLowerCase();
+        const ort  = (m.ort   || "").toLowerCase();
+        return tooltipContent.includes(q) || name.includes(q) || ort.includes(q);
+      });
+
+      if (matches.length) {
+        const bounds = L.latLngBounds();
+        matches.forEach((m, idx) => {
+          const latlng = m.marker.getLatLng();
+          map.addLayer(m.marker);
+          bounds.extend(latlng);
+          if (idx === 0 && m.marker.openTooltip) m.marker.openTooltip();
+        });
+        if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
+        return;
+      }
+
+      const c = await geocodeOnce(query);
+      if(!c){ alert("Kein Treffer gefunden."); return; }
+
+      // set as first route point (wie bei dir)
+      unit.selectedPoints = [{ label: query, coord: { lat: c.lat, lon: c.lon } }];
+
+      const marker = L.marker([c.lat, c.lon], { icon: ortIcon })
+        .bindTooltip(`<b>Ort:</b> ${query}`, {sticky:true})
+        .addTo(map);
+      marker.openTooltip();
     }
-  })();
+  };
+
+  return unit;
+}
 </script>
 
 </body>
