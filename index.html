@@ -3,9 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Interaktive Karte – Firmen & Kunden</title>
+  <title>Firmenkarte</title>
 
-  <!-- Leaflet -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -60,7 +59,6 @@
     .smallbtn.primary { background:#111; color:#fff; border-color:#111; }
     .hr { height:1px; background:var(--border); margin:10px 0; }
     .status { font-size:12px; color:var(--muted); }
-    .warn { color:#b45309; }
     .badge { display:inline-block; font-size:11px; padding:4px 8px; border:1px solid var(--border); border-radius:999px; margin-right:6px; }
   </style>
 </head>
@@ -69,7 +67,7 @@
 <div id="wrap">
   <div id="sidebar">
     <h1>Firmenkarte</h1>
-    <div class="muted">Firmen + Kunden (Google Sheets CSV) • Route + Preis je Produkt</div>
+    <div class="muted">Firmen + Kunden • Route + Preis je Produkt</div>
 
     <div class="box">
       <div class="row">
@@ -102,7 +100,7 @@
       <div class="hr"></div>
 
       <div class="muted">Route:</div>
-      <div class="status" id="routeStatus">Wähle Start & Ziel aus der Liste (Firmen oder Kunden).</div>
+      <div class="status" id="routeStatus">Wähle Start & Ziel aus der Liste.</div>
       <div class="row" style="margin-top:10px;">
         <button id="clearRoute" class="secondary" disabled>Route löschen</button>
         <button id="fitAll" class="secondary">Alles anzeigen</button>
@@ -118,7 +116,7 @@
 
 <script>
 /* =========================
-   LINKS (EINGETRAGEN)
+   LINKS (DEINE SHEETS)
    ========================= */
 const SHEETS_FIRMEN_CSV_URL =
   "https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/export?format=csv&gid=0";
@@ -127,20 +125,17 @@ const SHEETS_KUNDEN_CSV_URL =
   "https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/export?format=csv&gid=0";
 
 /* =========================
-   PREIS-LOGIK (OPTIONAL)
-   =========================
-   Wenn du nur "Basispreis aus Tabelle" willst: rateProKm überall 0 lassen.
-   Wenn du km-Zuschlag willst: Werte eintragen.
-*/
+   PREIS-LOGIK (optional)
+   ========================= */
 const rateProKm = {
-  "Hackschnitzel": 0,   // z.B. 0.12
-  "Sägespäne": 0,       // z.B. 0.10
-  "Saegespaene": 0,     // falls ohne Umlaut irgendwo vorkommt
-  "Siebmaterial": 0     // z.B. 0.15
+  "Hackschnitzel": 0,
+  "Sägespäne": 0,
+  "Saegespaene": 0,
+  "Siebmaterial": 0
 };
 
 /* =========================
-   LEAFLET INIT
+   MAP
    ========================= */
 const map = L.map("map").setView([51.0, 10.0], 6);
 L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -158,7 +153,7 @@ let firmen = [];
 let kunden = [];
 
 let mode = "firmen";
-let activeProducts = new Set(); // nur Firmen
+let activeProducts = new Set();
 let filterSURE = false;
 let filterPEFC = false;
 
@@ -168,23 +163,16 @@ let endPick = null;
 /* =========================
    HELPERS
    ========================= */
-function setStatus(msg, warn=false) {
-  const el = document.getElementById("status");
-  el.textContent = msg;
-  el.className = "status" + (warn ? " warn" : "");
+function setStatus(msg) {
+  document.getElementById("status").textContent = msg;
 }
-
 function escapeHtml(s) {
   return String(s ?? "")
     .replaceAll("&","&amp;").replaceAll("<","&lt;")
-    .replaceAll(">","&gt;").replaceAll('"',"&quot;")
+    .replaceAll(">","&gt;").replaceAll('"',"quot;")
     .replaceAll("'","&#039;");
 }
-
-function normalizeStr(s) {
-  return String(s ?? "").trim();
-}
-
+function normalizeStr(s) { return String(s ?? "").trim(); }
 function toNumber(val) {
   if (val === null || val === undefined) return NaN;
   const s = String(val).trim();
@@ -193,12 +181,11 @@ function toNumber(val) {
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : NaN;
 }
+function formatEUR(n) { return `${n.toFixed(2)} €`; }
 
-function formatEUR(n) {
-  return `${n.toFixed(2)} €`;
-}
-
-// Simple CSV parser (für Google CSV reicht das normal)
+/* =========================
+   CSV PARSER
+   ========================= */
 function parseCSV(text) {
   const rows = [];
   let row = [];
@@ -209,7 +196,7 @@ function parseCSV(text) {
     const c = text[i];
     const next = text[i+1];
 
-    if (c === '"' ) {
+    if (c === '"') {
       if (inQuotes && next === '"') { cur += '"'; i++; }
       else inQuotes = !inQuotes;
     } else if (c === "," && !inQuotes) {
@@ -236,9 +223,92 @@ function parseCSV(text) {
     });
 }
 
+async function loadSheetCSV(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`CSV konnte nicht geladen werden: ${res.status}`);
+  return parseCSV(await res.text());
+}
+
 /* =========================
-   GEO: Address -> LatLng
+   PRODUKTE (deine Struktur)
    ========================= */
+function getProductsFromRow(row) {
+  const products = [];
+  for (let i = 1; i <= 4; i++) {
+    const pKey = i === 1 ? "produkt" : `produkt_${i}`;
+    const priceKey = i === 1 ? "preis" : `preis_${i}`;
+    const name = normalizeStr(row[pKey]);
+    const base = toNumber(row[priceKey]);
+    if (name && Number.isFinite(base)) products.push({ name, base });
+  }
+  return products;
+}
+function getAllProductNamesFromFirmen(list) {
+  const set = new Set();
+  for (const f of list) for (const p of getProductsFromRow(f)) set.add(p.name);
+  return Array.from(set).sort((a,b) => a.localeCompare(b, "de"));
+}
+
+/* =========================
+   ZERTIFIKATE (Spalte Q)
+   ========================= */
+function parseCerts(row) {
+  const raw = normalizeStr(row.Q ?? row.q ?? row.zertifikate ?? row.Zertifikate);
+  const tokens = raw.split(/[,; ]+/).map(t => t.trim()).filter(Boolean);
+  const hasSURE = tokens.includes("1") || tokens.some(t => t.toLowerCase() === "sure");
+  const hasPEFC = tokens.includes("2") || tokens.some(t => t.toLowerCase() === "pefc");
+  return { hasSURE, hasPEFC };
+}
+
+/* =========================
+   ADRESSEN + GEO (WIE VORHER: automatisch)
+   ========================= */
+function buildAddress(row) {
+  // Firmen: plz, ort (enthält oft Straße), land
+  const plz = normalizeStr(row.plz);
+  const ort = normalizeStr(row.ort);
+  const land = normalizeStr(row.land);
+  return [ort, plz, land].filter(Boolean).join(", ");
+}
+
+function buildCustomerAddress(row) {
+  // Kunden: wir versuchen mehrere mögliche Spaltennamen
+  const name = normalizeStr(row.kunde ?? row.name ?? "");
+  const ort = normalizeStr(row.ort ?? row.adresse ?? row.address ?? "");
+  const plz = normalizeStr(row.plz ?? "");
+  const land = normalizeStr(row.land ?? "");
+  // name nicht in die Geocode Query mischen, nur Adresse:
+  return [ort, plz, land].filter(Boolean).join(", ");
+}
+
+function getRowLatLon(row) {
+  const lat = toNumber(row.lat ?? row.latitude);
+  const lon = toNumber(row.lon ?? row.lng ?? row.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return { lat, lon };
+}
+
+function cacheKey(kind, row) {
+  const id = normalizeStr(kind === "firma" ? (row.firma ?? row.name ?? "") : (row.kunde ?? row.name ?? ""));
+  const addr = kind === "firma" ? buildAddress(row) : buildCustomerAddress(row);
+  return `geo:${kind}:${id}:${addr}`.toLowerCase();
+}
+
+function readGeoCache(key) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || !Number.isFinite(obj.lat) || !Number.isFinite(obj.lon)) return null;
+    return { lat: obj.lat, lon: obj.lon };
+  } catch { return null; }
+}
+
+function writeGeoCache(key, ll) {
+  try { localStorage.setItem(key, JSON.stringify(ll)); } catch {}
+}
+
+// Nominatim (OpenStreetMap) – mit kleinem Delay damit es stabil bleibt
 async function geocodeNominatim(query) {
   const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`;
   const res = await fetch(url, { headers: { "Accept": "application/json" } });
@@ -248,59 +318,27 @@ async function geocodeNominatim(query) {
   return { lat: Number(data[0].lat), lon: Number(data[0].lon) };
 }
 
-function buildAddress(row) {
-  // deine Spalten (vom Screenshot): plz, ort (enthält oft Straße), land
-  const plz = normalizeStr(row.plz);
-  const ort = normalizeStr(row.ort);
-  const land = normalizeStr(row.land);
-  return [ort, plz, land].filter(Boolean).join(", ");
-}
+function sleep(ms){ return new Promise(r => setTimeout(r, ms)); }
 
-/* =========================
-   PRODUKTE aus deiner Struktur:
-   produkt/preis, produkt_2/preis_2, ...
-   ========================= */
-function getProductsFromRow(row) {
-  const products = [];
-  for (let i = 1; i <= 4; i++) {
-    const pKey = i === 1 ? "produkt" : `produkt_${i}`;
-    const priceKey = i === 1 ? "preis" : `preis_${i}`;
+async function ensureLatLon(kind, row) {
+  const direct = getRowLatLon(row);
+  if (direct) return direct;
 
-    const name = normalizeStr(row[pKey]);
-    const base = toNumber(row[priceKey]);
+  const key = cacheKey(kind, row);
+  const cached = readGeoCache(key);
+  if (cached) return cached;
 
-    if (name && Number.isFinite(base)) {
-      products.push({ name, base });
-    }
-  }
-  return products;
-}
+  const query = (kind === "firma") ? buildAddress(row) : buildCustomerAddress(row);
+  if (!query) return null;
 
-function getAllProductNamesFromFirmen(list) {
-  const set = new Set();
-  for (const f of list) {
-    for (const p of getProductsFromRow(f)) set.add(p.name);
-  }
-  return Array.from(set).sort((a,b) => a.localeCompare(b, "de"));
-}
+  // kleine Pause (freundlich zu Nominatim)
+  await sleep(250);
 
-/* =========================
-   ZERTIFIKATE (Spalte Q)
-   1 = SURE, 2 = PEFC
-   (du hast gesagt: in Spalte Q stehen die Codes)
-   ========================= */
-function parseCerts(row) {
-  // falls Header nicht "Q" heißt: ändere hier (z.B. "zertifikate")
-  const raw = normalizeStr(row.Q ?? row.q ?? row.zertifikate ?? row.Zertifikate);
-  const tokens = raw
-    .split(/[,; ]+/)
-    .map(t => t.trim())
-    .filter(Boolean);
+  const ll = await geocodeNominatim(query);
+  if (!ll) return null;
 
-  const hasSURE = tokens.includes("1") || tokens.some(t => t.toLowerCase() === "sure");
-  const hasPEFC = tokens.includes("2") || tokens.some(t => t.toLowerCase() === "pefc");
-
-  return { hasSURE, hasPEFC };
+  writeGeoCache(key, ll);
+  return ll;
 }
 
 /* =========================
@@ -314,53 +352,63 @@ async function fetchRoute(a, b) {
   if (!data?.routes?.length) return null;
   return data.routes[0];
 }
-
 function kmFromMeters(m) { return m / 1000; }
-function minFromSeconds(s) { return s / 60; }
-
 function formatDuration(sec) {
-  const mins = Math.round(minFromSeconds(sec));
+  const mins = Math.round(sec / 60);
   const h = Math.floor(mins / 60);
   const m = mins % 60;
   if (h <= 0) return `${m} min`;
-  return `${h}h ${String(m).padStart(2, "0")}min`;
+  return `${h}h ${String(m).padStart(2,"0")}min`;
 }
 
 /* =========================
-   PREISE anzeigen + berechnen
+   PREISE im Routen-Popup
    ========================= */
 function buildPriceLinesForPopup(row, distanceKm) {
   const prods = getProductsFromRow(row);
-
   if (!prods.length) return `<div class="muted">Keine Produkte eingetragen.</div>`;
 
-  const lines = prods.map(p => {
+  return prods.map(p => {
     const r = rateProKm[p.name] ?? rateProKm[p.name.replaceAll("ä","ae").replaceAll("Ä","Ae")] ?? 0;
     const total = p.base + (distanceKm * r);
     return `<div><b>${escapeHtml(p.name)}:</b> ${formatEUR(total)}</div>`;
-  });
-
-  return lines.join("");
+  }).join("");
 }
 
 /* =========================
-   UI + RENDER
+   FILTER
+   ========================= */
+function matchesSearch(row, q) {
+  if (!q) return true;
+  q = q.toLowerCase();
+  const fields = [row.firma,row.plz,row.ort,row.land,row.kunde,row.name,row.adresse,row.address]
+    .map(x => String(x ?? "").toLowerCase());
+  return fields.some(v => v.includes(q));
+}
+function firmHasActiveProduct(row) {
+  if (activeProducts.size === 0) return true;
+  const names = getProductsFromRow(row).map(p => p.name);
+  return names.some(n => activeProducts.has(n));
+}
+function firmMatchesCertFilter(row) {
+  if (!filterSURE && !filterPEFC) return true;
+  const c = parseCerts(row);
+  if (filterSURE && !c.hasSURE) return false;
+  if (filterPEFC && !c.hasPEFC) return false;
+  return true;
+}
+
+/* =========================
+   UI
    ========================= */
 function renderProductChips() {
   const el = document.getElementById("productChips");
   el.innerHTML = "";
-
   if (mode !== "firmen") {
     el.innerHTML = `<span class="muted">Nur bei Firmen verfügbar.</span>`;
     return;
   }
-
   const products = getAllProductNamesFromFirmen(firmen);
-  if (!products.length) {
-    el.innerHTML = `<span class="muted">Keine Produkte gefunden.</span>`;
-    return;
-  }
-
   for (const name of products) {
     const chip = document.createElement("span");
     chip.className = "chip" + (activeProducts.has(name) ? " active" : "");
@@ -374,53 +422,24 @@ function renderProductChips() {
   }
 }
 
-function matchesSearch(row, q) {
-  if (!q) return true;
-  q = q.toLowerCase();
-  const fields = [
-    row.firma, row.plz, row.ort, row.land,
-    row.kunde, row.name, row.adresse
-  ].map(x => String(x ?? "").toLowerCase());
-  return fields.some(v => v.includes(q));
-}
+function clearMarkers(){ markersLayer.clearLayers(); }
 
-function firmHasActiveProduct(row) {
-  if (activeProducts.size === 0) return true;
-  const names = getProductsFromRow(row).map(p => p.name);
-  return names.some(n => activeProducts.has(n));
-}
-
-function firmMatchesCertFilter(row) {
-  if (!filterSURE && !filterPEFC) return true;
-  const c = parseCerts(row);
-  if (filterSURE && !c.hasSURE) return false;
-  if (filterPEFC && !c.hasPEFC) return false;
-  return true;
-}
-
-function clearMarkers() {
-  markersLayer.clearLayers();
-}
-
-function addMarkerForRow(row, kind) {
-  // kind: "firma" | "kunde"
-  const lat = toNumber(row.lat ?? row.latitude);
-  const lon = toNumber(row.lon ?? row.lng ?? row.longitude);
-
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+async function addMarkerForRow(row, kind) {
+  const ll = await ensureLatLon(kind, row);
+  if (!ll) return null;
 
   const title = kind === "firma"
     ? normalizeStr(row.firma || row.name || "Firma")
     : normalizeStr(row.kunde || row.name || "Kunde");
 
-  const addr = kind === "firma" ? buildAddress(row) : normalizeStr(row.ort || row.adresse || "");
+  const addr = kind === "firma" ? buildAddress(row) : buildCustomerAddress(row);
 
-  const cert = kind === "firma" ? parseCerts(row) : { hasSURE:false, hasPEFC:false };
+  const cert = (kind === "firma") ? parseCerts(row) : { hasSURE:false, hasPEFC:false };
   const badges = [];
   if (cert.hasSURE) badges.push(`<span class="badge">SURE</span>`);
   if (cert.hasPEFC) badges.push(`<span class="badge">PEFC</span>`);
 
-  const productsHtml = kind === "firma"
+  const productsHtml = (kind === "firma")
     ? (() => {
         const ps = getProductsFromRow(row);
         if (!ps.length) return `<div class="muted">Keine Produkte</div>`;
@@ -437,9 +456,8 @@ function addMarkerForRow(row, kind) {
     </div>
   `;
 
-  const m = L.marker([lat, lon]).bindPopup(popup);
-  m.addTo(markersLayer);
-  return m;
+  const m = L.marker([ll.lat, ll.lon]).bindPopup(popup).addTo(markersLayer);
+  return { marker: m, ll };
 }
 
 function listItemHtml(row, kind) {
@@ -447,21 +465,19 @@ function listItemHtml(row, kind) {
     ? normalizeStr(row.firma || row.name || "Firma")
     : normalizeStr(row.kunde || row.name || "Kunde");
 
-  const addr = kind === "firma" ? buildAddress(row) : normalizeStr(row.ort || row.adresse || "");
+  const addr = kind === "firma" ? buildAddress(row) : buildCustomerAddress(row);
 
   let meta = `<div class="item-sub">${escapeHtml(addr)}</div>`;
 
   if (kind === "firma") {
     const cert = parseCerts(row);
-    const badges = [];
-    if (cert.hasSURE) badges.push("SURE");
-    if (cert.hasPEFC) badges.push("PEFC");
-    if (badges.length) meta += `<div class="item-sub">Zertifikate: ${badges.join(", ")}</div>`;
+    const b = [];
+    if (cert.hasSURE) b.push("SURE");
+    if (cert.hasPEFC) b.push("PEFC");
+    if (b.length) meta += `<div class="item-sub">Zertifikate: ${b.join(", ")}</div>`;
 
     const prods = getProductsFromRow(row);
-    if (prods.length) {
-      meta += `<div class="item-sub">Produkte: ${prods.map(p => p.name).join(", ")}</div>`;
-    }
+    if (prods.length) meta += `<div class="item-sub">Produkte: ${prods.map(p => p.name).join(", ")}</div>`;
   }
 
   return `
@@ -475,13 +491,6 @@ function listItemHtml(row, kind) {
       </div>
     </div>
   `;
-}
-
-function getRowLatLon(row) {
-  const lat = toNumber(row.lat ?? row.latitude);
-  const lon = toNumber(row.lon ?? row.lng ?? row.longitude);
-  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
-  return { lat, lon };
 }
 
 function updateRouteStatus() {
@@ -502,34 +511,21 @@ function clearRoute() {
 async function buildRouteIfReady() {
   if (!startPick || !endPick) return;
 
-  const a = startPick.ll;
-  const b = endPick.ll;
-
-  const route = await fetchRoute(a, b);
-  if (!route) {
-    alert("Route konnte nicht berechnet werden.");
-    return;
-  }
+  const route = await fetchRoute(startPick.ll, endPick.ll);
+  if (!route) { alert("Route konnte nicht berechnet werden."); return; }
 
   const coords = route.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
   if (routeLine) map.removeLayer(routeLine);
   routeLine = L.polyline(coords, { weight: 5 }).addTo(map);
 
-  const bounds = routeLine.getBounds();
-  map.fitBounds(bounds.pad(0.15));
+  map.fitBounds(routeLine.getBounds().pad(0.15));
 
   const distanceKm = kmFromMeters(route.distance);
   const duration = formatDuration(route.duration);
 
-  // Popup: Preise nur wenn Ziel/Start eine Firma ist
-  const startIsFirma = startPick.kind === "firma";
-  const endIsFirma = endPick.kind === "firma";
-
   let pricesHtml = "";
-  // Wenn Start eine Firma ist: nimm deren Produkte
-  if (startIsFirma) pricesHtml = buildPriceLinesForPopup(startPick.row, distanceKm);
-  // sonst wenn Ziel eine Firma ist: nimm deren Produkte
-  else if (endIsFirma) pricesHtml = buildPriceLinesForPopup(endPick.row, distanceKm);
+  if (startPick.kind === "firma") pricesHtml = buildPriceLinesForPopup(startPick.row, distanceKm);
+  else if (endPick.kind === "firma") pricesHtml = buildPriceLinesForPopup(endPick.row, distanceKm);
 
   const popupHtml = `
     <div style="min-width:260px">
@@ -542,14 +538,10 @@ async function buildRouteIfReady() {
   `;
 
   routeLine.bindPopup(popupHtml).openPopup();
-
   document.getElementById("clearRoute").disabled = false;
 }
 
-/* =========================
-   RENDER ALL
-   ========================= */
-function renderAll() {
+async function renderAll() {
   clearMarkers();
 
   const q = normalizeStr(document.getElementById("search").value);
@@ -561,7 +553,6 @@ function renderAll() {
 
   const filtered = data.filter(row => {
     if (!matchesSearch(row, q)) return false;
-
     if (mode === "firmen") {
       if (!firmHasActiveProduct(row)) return false;
       if (!firmMatchesCertFilter(row)) return false;
@@ -569,48 +560,42 @@ function renderAll() {
     return true;
   });
 
-  const markers = [];
-  for (const row of filtered) {
-    const m = addMarkerForRow(row, kind);
-    if (m) markers.push(m);
+  setStatus(`${filtered.length} ${mode === "firmen" ? "Firmen" : "Kunden"} – setze Marker…`);
+
+  // Marker + Bounds sammeln
+  const boundsPts = [];
+
+  // Marker setzen (mit Geocoding + Cache)
+  for (let i = 0; i < filtered.length; i++) {
+    const row = filtered[i];
+    const out = await addMarkerForRow(row, kind);
+    if (out) boundsPts.push([out.ll.lat, out.ll.lon]);
   }
 
-  // Liste bauen
+  // Liste
   for (const row of filtered) {
-    const itemWrap = document.createElement("div");
-    itemWrap.innerHTML = listItemHtml(row, kind);
-
-    const item = itemWrap.firstElementChild;
-    const ll = getRowLatLon(row);
-
-    // falls kein lat/lon: warn in UI
-    if (!ll) {
-      const sub = item.querySelector(".item-sub");
-      if (sub) sub.innerHTML += `<div class="item-sub warn">⚠️ Kein lat/lon in Tabelle (oder nicht numerisch)</div>`;
-    }
+    const wrap = document.createElement("div");
+    wrap.innerHTML = listItemHtml(row, kind);
+    const item = wrap.firstElementChild;
 
     item.querySelectorAll("button").forEach(btn => {
       btn.addEventListener("click", async () => {
         const action = btn.getAttribute("data-action");
-        if (!ll) {
-          alert("Für diesen Eintrag fehlen lat/lon. Entweder Spalten hinzufügen oder Geocoding einbauen.");
-          return;
-        }
 
         const title = (kind === "firma")
           ? normalizeStr(row.firma || row.name || "Firma")
           : normalizeStr(row.kunde || row.name || "Kunde");
 
-        if (action === "zoom") {
-          map.setView([ll.lat, ll.lon], 11);
-        }
+        const ll = await ensureLatLon(kind, row);
+        if (!ll) { alert("Adresse konnte nicht gefunden werden."); return; }
+
+        if (action === "zoom") map.setView([ll.lat, ll.lon], 11);
 
         if (action === "start") {
           startPick = { title, ll, kind, row };
           updateRouteStatus();
           await buildRouteIfReady();
         }
-
         if (action === "ziel") {
           endPick = { title, ll, kind, row };
           updateRouteStatus();
@@ -622,50 +607,22 @@ function renderAll() {
     listEl.appendChild(item);
   }
 
+  // wie vorher: automatisch auf Marker zoomen (nur wenn es Punkte gibt)
+  if (boundsPts.length) {
+    map.fitBounds(L.latLngBounds(boundsPts).pad(0.2));
+  }
+
   setStatus(`${filtered.length} ${mode === "firmen" ? "Firmen" : "Kunden"} angezeigt.`);
 }
 
 /* =========================
-   LOAD DATA
-   ========================= */
-async function loadSheetCSV(url) {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`CSV konnte nicht geladen werden: ${res.status}`);
-  const text = await res.text();
-  return parseCSV(text);
-}
-
-async function init() {
-  try {
-    setStatus("Lade Firmen…");
-    firmen = await loadSheetCSV(SHEETS_FIRMEN_CSV_URL);
-
-    setStatus("Lade Kunden…");
-    kunden = await loadSheetCSV(SHEETS_KUNDEN_CSV_URL);
-
-    // Produktchips nur aus Firmen
-    renderProductChips();
-
-    // Erstes rendern
-    renderAll();
-  } catch (e) {
-    console.error(e);
-    setStatus("Fehler beim Laden. Prüfe: Freigabe der Sheets + CSV-Link.", true);
-    alert("Fehler beim Laden der Daten. Prüfe, ob die Google Sheets öffentlich (Jeder mit Link) sind.");
-  }
-}
-
-/* =========================
-   EVENTS
+   INIT + EVENTS
    ========================= */
 document.getElementById("search").addEventListener("input", () => renderAll());
 
 document.getElementById("mode").addEventListener("change", (e) => {
   mode = e.target.value;
-  // Route resetten wenn Modus gewechselt
   clearRoute();
-
-  // Produktchips nur im Firmen-Modus aktiv anzeigen
   renderProductChips();
   renderAll();
 });
@@ -682,19 +639,29 @@ document.getElementById("chipPEFC").addEventListener("click", (e) => {
 });
 
 document.getElementById("clearRoute").addEventListener("click", () => clearRoute());
-
 document.getElementById("fitAll").addEventListener("click", () => {
-  const bounds = [];
-  markersLayer.eachLayer(l => {
-    if (l.getLatLng) bounds.push(l.getLatLng());
-  });
-  if (!bounds.length) return;
-  map.fitBounds(L.latLngBounds(bounds).pad(0.2));
+  const pts = [];
+  markersLayer.eachLayer(l => { if (l.getLatLng) pts.push(l.getLatLng()); });
+  if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(0.2));
 });
 
 updateRouteStatus();
-init();
-</script>
 
+(async function init(){
+  try {
+    setStatus("Lade Firmen…");
+    firmen = await loadSheetCSV(SHEETS_FIRMEN_CSV_URL);
+    setStatus("Lade Kunden…");
+    kunden = await loadSheetCSV(SHEETS_KUNDEN_CSV_URL);
+
+    renderProductChips();
+    await renderAll();
+  } catch (e) {
+    console.error(e);
+    setStatus("Fehler beim Laden. Prüfe Freigabe der Sheets (Jeder mit Link).");
+    alert("Fehler beim Laden. Stell beide Google Sheets auf: Jeder mit dem Link kann ansehen.");
+  }
+})();
+</script>
 </body>
 </html>
