@@ -217,7 +217,7 @@
     return "";
   }
 
-  // Tooltip Firma
+  // Tooltip Firma (NORMAL: zeigt Standardpreise)
   function tooltipHtmlFirma(m){
     const landInfo = m.land ? `<br><b>Land:</b> ${m.land}` : "";
     const place = `${m.plz ? m.plz+" " : ""}${m.ort || ""}`.trim();
@@ -537,39 +537,42 @@
     const preisS = firmeneintrag?.prices?.saegespaene;
     const preisM = firmeneintrag?.prices?.siebmaterial;
 
+    // ====== Streckenpreise: im Popup NUR Gesamtpreis anzeigen ======
     // Siebmaterial Formel: =(((EK*21,50)+(1,85*km))/11,8)*1,05
+
     const TONNE = 21.50;
-    const KMSATZ_SIEB = 1.85;
-    const ATRO = 11.8;
     const MARGE = 1.05;
 
-    function siebGesamt(ek, km){
+    const KMSATZ_SIEB = 1.85;
+    const ATRO_SIEB = 11.8;
+
+    // Für Hackschnitzel & Sägespäne (anpassen wenn andere Werte!)
+    const KMSATZ_HACK = 1.85;
+    const ATRO_HACK = 11.8;
+
+    const KMSATZ_SAEG = 1.85;
+    const ATRO_SAEG = 11.8;
+
+    function calcGesamt(ek, km, kmSatz, atro){
       const EK = (isFinite(ek) && ek > 0) ? ek : 0;
       const KM = (isFinite(km) && km > 0) ? km : 0;
-      return ((((EK * TONNE) + (KMSATZ_SIEB * KM)) / ATRO) * MARGE);
+      if (EK <= 0) return null;
+      return ((((EK * TONNE) + (kmSatz * KM)) / atro) * MARGE);
     }
 
-    const totalSieb = (preisM !== undefined && isFinite(preisM) && preisM > 0)
-      ? siebGesamt(preisM, distKm)
-      : null;
+    const totalH = calcGesamt(preisH, distKm, KMSATZ_HACK, ATRO_HACK);
+    const totalS = calcGesamt(preisS, distKm, KMSATZ_SAEG, ATRO_SAEG);
+    const totalM = calcGesamt(preisM, distKm, KMSATZ_SIEB, ATRO_SIEB);
 
+    // Route zeichnen (nur 1x)
     if(routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
 
     const mid = coords[Math.floor(coords.length/2)];
 
-    const lineH = `<b>Hackschnitzel:</b> ${preisH !== undefined && isFinite(preisH) && preisH>0 ? preisH.toFixed(2)+" €" : "–"}`;
-    const lineS = `<b>Sägespäne:</b> ${preisS !== undefined && isFinite(preisS) && preisS>0 ? preisS.toFixed(2)+" €" : "–"}`;
-    const lineM = (preisM !== undefined)
-      ? `<b>Siebmaterial:</b> ${isFinite(preisM) && preisM>0 ? preisM.toFixed(2)+" €" : "–"}`
-      : `<b>Siebmaterial:</b> –`;
-
-    const lineMGes = (totalSieb !== null)
-      ? `<b>Siebmaterial Gesamt:</b> <span style="color:green;font-size:1.05em">${totalSieb.toFixed(2)} €</span>`
-      : `<b>Siebmaterial Gesamt:</b> –`;
-
-    if(routeLine) map.removeLayer(routeLine);
-    routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
+    const lineH = `<b>Hackschnitzel:</b> ${totalH !== null ? `<span style="color:green;font-size:1.05em">${totalH.toFixed(2)} €</span>` : "–"}`;
+    const lineS = `<b>Sägespäne:</b> ${totalS !== null ? `<span style="color:green;font-size:1.05em">${totalS.toFixed(2)} €</span>` : "–"}`;
+    const lineM = `<b>Siebmaterial:</b> ${totalM !== null ? `<span style="color:green;font-size:1.05em">${totalM.toFixed(2)} €</span>` : "–"}`;
 
     const popupHtml = `
       <b>Route:</b> ${a.label} ↔ ${b.label}<br>
@@ -579,8 +582,7 @@
       ${firmeneintrag ? `
         ${lineH}<br>
         ${lineS}<br>
-        ${lineM}<br>
-        ${lineMGes}
+        ${lineM}
       ` : `
         <b>Hinweis:</b> Keine Firma ausgewählt – keine Werkpreise verfügbar.
       `}
