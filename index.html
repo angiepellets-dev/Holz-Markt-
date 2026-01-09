@@ -116,6 +116,47 @@
 </div>
 
 <script>
+  // =========================
+  //   FORMEL-KONSTANTEN
+  // =========================
+  // WICHTIG: Hier musst du DEINE echten Werte eintragen.
+  // (Ich lasse Default-Werte drin, aber wenn die bei dir anders sind, sind Ergebnisse falsch.)
+
+  // gemeinsame Marge
+  const MARGE = 1.05;
+
+  // Hackschnitzel: (EK + ((km * kmSatz) / TEILER)) * MARGE
+  const HACKS_TEILER = 90;
+  const HACKS_KM_UNTER_GLEICH_200 = 2.15;   // km-Satz <= 200 km
+  const HACKS_KM_UEBER_200        = 2.15;   // km-Satz > 200 km  <-- ÄNDERN, falls bei dir anders!
+
+  // Sägespäne: (EK + ((km * kmSatz) / TEILER)) * MARGE
+  const SAEG_TEILER = 90;
+  const SAEG_KM_UNTER_GLEICH_200 = 2.15;    // <-- ÄNDERN, falls bei dir anders!
+  const SAEG_KM_UEBER_200        = 2.15;    // <-- ÄNDERN, falls bei dir anders!
+
+  // Siebmaterial: =(((EK*21,5)+(1,85*km))/11,8)*1,05
+  const SIEB_TONNE = 21.50;
+  const SIEB_KM_SATZ = 1.85;
+  const SIEB_ATRO = 11.8;
+
+  function calcHackschnitzel(ek, km){
+    if (!(isFinite(ek) && ek > 0)) return null;
+    const kmSatz = (km <= 200) ? HACKS_KM_UNTER_GLEICH_200 : HACKS_KM_UEBER_200;
+    return (ek + ((km * kmSatz) / HACKS_TEILER)) * MARGE;
+  }
+
+  function calcSaegespaene(ek, km){
+    if (!(isFinite(ek) && ek > 0)) return null;
+    const kmSatz = (km <= 200) ? SAEG_KM_UNTER_GLEICH_200 : SAEG_KM_UEBER_200;
+    return (ek + ((km * kmSatz) / SAEG_TEILER)) * MARGE;
+  }
+
+  function calcSiebmaterial(ek, km){
+    if (!(isFinite(ek) && ek > 0)) return null;
+    return (((ek * SIEB_TONNE) + (SIEB_KM_SATZ * km)) / SIEB_ATRO) * MARGE;
+  }
+
   // Karte
   const map = L.map("map", { maxZoom: 19 }).setView([51, 11], 5);
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -217,7 +258,7 @@
     return "";
   }
 
-  // Tooltip Firma (NORMAL: zeigt Standardpreise)
+  // Tooltip Firma (NORMAL: zeigt Standardpreise aus Tabelle)
   function tooltipHtmlFirma(m){
     const landInfo = m.land ? `<br><b>Land:</b> ${m.land}` : "";
     const place = `${m.plz ? m.plz+" " : ""}${m.ort || ""}`.trim();
@@ -529,6 +570,7 @@
 
     const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
 
+    // welche der beiden Punkte ist eine Firma?
     const firmaObjA = alleMarker.find(m => m.type==="firma" && m.firma === a.label);
     const firmaObjB = alleMarker.find(m => m.type==="firma" && m.firma === b.label);
     const firmeneintrag = firmaObjA || firmaObjB;
@@ -537,34 +579,12 @@
     const preisS = firmeneintrag?.prices?.saegespaene;
     const preisM = firmeneintrag?.prices?.siebmaterial;
 
-    // ====== Streckenpreise: im Popup NUR Gesamtpreis anzeigen ======
-    // Siebmaterial Formel: =(((EK*21,50)+(1,85*km))/11,8)*1,05
+    // NUR Strecken-Endpreise (kein EK anzeigen)
+    const totalH = (preisH !== undefined && isFinite(preisH) && preisH > 0) ? calcHackschnitzel(preisH, distKm) : null;
+    const totalS = (preisS !== undefined && isFinite(preisS) && preisS > 0) ? calcSaegespaene(preisS, distKm) : null;
+    const totalM = (preisM !== undefined && isFinite(preisM) && preisM > 0) ? calcSiebmaterial(preisM, distKm) : null;
 
-    const TONNE = 21.50;
-    const MARGE = 1.05;
-
-    const KMSATZ_SIEB = 1.85;
-    const ATRO_SIEB = 11.8;
-
-    // Für Hackschnitzel & Sägespäne (anpassen wenn andere Werte!)
-    const KMSATZ_HACK = 1.85;
-    const ATRO_HACK = 11.8;
-
-    const KMSATZ_SAEG = 1.85;
-    const ATRO_SAEG = 11.8;
-
-    function calcGesamt(ek, km, kmSatz, atro){
-      const EK = (isFinite(ek) && ek > 0) ? ek : 0;
-      const KM = (isFinite(km) && km > 0) ? km : 0;
-      if (EK <= 0) return null;
-      return ((((EK * TONNE) + (kmSatz * KM)) / atro) * MARGE);
-    }
-
-    const totalH = calcGesamt(preisH, distKm, KMSATZ_HACK, ATRO_HACK);
-    const totalS = calcGesamt(preisS, distKm, KMSATZ_SAEG, ATRO_SAEG);
-    const totalM = calcGesamt(preisM, distKm, KMSATZ_SIEB, ATRO_SIEB);
-
-    // Route zeichnen (nur 1x)
+    // Route zeichnen (NUR 1x!)
     if(routeLine) map.removeLayer(routeLine);
     routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
 
