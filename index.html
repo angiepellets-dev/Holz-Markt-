@@ -1,762 +1,699 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pelletwerke – Europa Preiskarte</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Interaktive Karte – Firmen & Kunden</title>
 
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <!-- Leaflet -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
 
   <style>
-    html,body{height:100%;margin:0;}
-    #map{width:100%;height:100%;}
-
-    .legend, .cert-box{
-      position:absolute;background:#fff;padding:8px 10px;border-radius:6px;
-      box-shadow:0 2px 8px rgba(0,0,0,.12);
-      font:14px/1.3 system-ui,Arial,sans-serif;
+    :root { --border:#e7e7e7; --muted:#666; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    #wrap { display:flex; height:100vh; }
+    #sidebar {
+      width: 380px; max-width: 92vw; overflow:auto;
+      border-right: 1px solid var(--border);
+      padding: 14px 14px 18px;
+      box-sizing: border-box;
+      background:#fff;
     }
-    .cert-box{bottom:12px;left:12px;z-index:1000;}
-    .legend{bottom:12px;right:12px;min-width:180px;z-index:3000;}
-
-    .cert-box input[type="checkbox"],
-    .legend input[type="checkbox"]{width:14px;height:14px;margin-right:5px;vertical-align:middle;}
-
-    .search-box{
-      position:absolute;top:12px;right:12px;z-index:1500;background:#fff;
-      padding:8px 10px;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,.15);
-      font:14px system-ui,Arial,sans-serif;width:280px;
+    #map { flex:1; }
+    h1 { font-size: 16px; margin: 0 0 10px; }
+    .row { display:flex; gap:8px; align-items:center; }
+    .row > * { flex:1; }
+    input[type="text"], select {
+      width:100%; padding:10px; border:1px solid var(--border); border-radius:10px;
+      box-sizing: border-box;
     }
-    .search-box input[type="text"]{
-      width:100%;padding:6px 8px;border:1px solid #ccc;border-radius:4px;
-      outline:none;box-sizing:border-box;margin-left:4px;
+    .box { border:1px solid var(--border); border-radius:14px; padding:10px; margin: 10px 0; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;}
+    .chip { font-size:12px; padding:6px 10px; border-radius:999px; border:1px solid var(--border); cursor:pointer; user-select:none; }
+    .chip.active { border-color:#111; background:#111; color:#fff; }
+    button {
+      padding:10px 12px; border-radius:12px; border:1px solid var(--border);
+      background:#111; color:#fff; cursor:pointer;
     }
-    .search-hint{margin-top:6px;font-size:12px;opacity:.75;line-height:1.25;}
-
-    .cert-box hr{border:none;height:1px;background:#eee;margin:6px 0;}
-
-    .country-dropdown{position:relative;display:block;width:100%;margin-top:8px;}
-    .country-dropdown-button{
-      width:100%;background:#fff;border:1px solid #ccc;border-radius:4px;
-      padding:4px 6px;text-align:left;cursor:pointer;box-sizing:border-box;
+    button.secondary { background:#fff; color:#111; }
+    button:disabled { opacity:.5; cursor:not-allowed; }
+    .list { margin-top:10px; }
+    .item {
+      padding:10px; border:1px solid var(--border); border-radius:14px;
+      margin-bottom:10px;
     }
-    .country-dropdown-button:after{content:"▾";float:right;opacity:.6;}
-    .country-dropdown-menu{
-      position:absolute;top:110%;left:0;background:#fff;border:1px solid #ccc;
-      border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,.12);
-      z-index:4000;display:none;min-width:160px;max-height:260px;overflow-y:auto;
-      padding:8px 10px;box-sizing:border-box;
-    }
-    .country-dropdown-menu label{
-      display:flex;align-items:center;gap:8px;margin:6px 0;cursor:pointer;user-select:none;
-    }
-    .country-dropdown-menu label input[type="checkbox"]{margin:0;width:14px;height:14px;flex:0 0 auto;}
+    .item-title { font-weight:600; font-size: 14px; }
+    .item-sub { font-size:12px; color:var(--muted); margin-top:2px; }
+    .item-actions { display:flex; gap:8px; margin-top:10px; flex-wrap:wrap; }
+    .smallbtn { padding:8px 10px; border-radius:12px; border:1px solid var(--border); background:#fff; cursor:pointer; }
+    .smallbtn.primary { background:#111; color:#fff; border-color:#111; }
+    .hr { height:1px; background:var(--border); margin:10px 0; }
+    .status { font-size:12px; color:var(--muted); }
+    .warn { color:#b45309; }
+    .badge { display:inline-block; font-size:11px; padding:4px 8px; border:1px solid var(--border); border-radius:999px; margin-right:6px; }
   </style>
 </head>
+
 <body>
+<div id="wrap">
+  <div id="sidebar">
+    <h1>Firmenkarte</h1>
+    <div class="muted">Firmen + Kunden (Google Sheets CSV) • Route + Preis je Produkt</div>
 
-<div id="map"></div>
+    <div class="box">
+      <div class="row">
+        <input id="search" type="text" placeholder="Suche Firma / Ort / PLZ…" />
+      </div>
 
-<!-- Suche + Länderfilter -->
-<div class="search-box">
-  🔍 <input type="text" id="searchInput" placeholder="Firma, Kunde oder Ort/Adresse suchen…"/>
-  <div class="search-hint"></div>
+      <div class="hr"></div>
 
-  <b style="display:block;margin-top:8px;">Land / Länder filtern</b>
-  <div class="country-dropdown" id="countryDropdown">
-    <div class="country-dropdown-button" id="countryDropdownBtn">Alle Länder</div>
-    <div class="country-dropdown-menu" id="countryDropdownMenu">
-      <label><input type="checkbox" class="countryChk" value="all" checked> Alle</label>
-      <label><input type="checkbox" class="countryChk" value="be"> Belgien</label>
-      <label><input type="checkbox" class="countryChk" value="dk"> Dänemark</label>
-      <label><input type="checkbox" class="countryChk" value="de"> Deutschland</label>
-      <label><input type="checkbox" class="countryChk" value="ee"> Estland</label>
-      <label><input type="checkbox" class="countryChk" value="fi"> Finnland</label>
-      <label><input type="checkbox" class="countryChk" value="fr"> Frankreich</label>
-      <label><input type="checkbox" class="countryChk" value="it"> Italien</label>
-      <label><input type="checkbox" class="countryChk" value="lv"> Lettland</label>
-      <label><input type="checkbox" class="countryChk" value="lt"> Litauen</label>
-      <label><input type="checkbox" class="countryChk" value="nl"> Niederlande</label>
-      <label><input type="checkbox" class="countryChk" value="at"> Österreich</label>
-      <label><input type="checkbox" class="countryChk" value="pl"> Polen</label>
-      <label><input type="checkbox" class="countryChk" value="se"> Schweden</label>
-      <label><input type="checkbox" class="countryChk" value="ch"> Schweiz</label>
-      <label><input type="checkbox" class="countryChk" value="sk"> Slowakei</label>
-      <label><input type="checkbox" class="countryChk" value="cz"> Tschechien</label>
-      <label><input type="checkbox" class="countryChk" value="gb"> United Kingdom</label>
+      <div class="muted">Ansicht:</div>
+      <div class="row" style="margin-top:6px;">
+        <select id="mode">
+          <option value="firmen" selected>Firmen</option>
+          <option value="kunden">Kunden</option>
+        </select>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="muted">Produktfilter (nur Firmen):</div>
+      <div class="chips" id="productChips"></div>
+
+      <div class="hr"></div>
+
+      <div class="muted">Zertifikate (nur Firmen, Spalte Q: 1=SURE, 2=PEFC):</div>
+      <div class="chips">
+        <span class="chip" id="chipSURE">SURE</span>
+        <span class="chip" id="chipPEFC">PEFC</span>
+      </div>
+
+      <div class="hr"></div>
+
+      <div class="muted">Route:</div>
+      <div class="status" id="routeStatus">Wähle Start & Ziel aus der Liste (Firmen oder Kunden).</div>
+      <div class="row" style="margin-top:10px;">
+        <button id="clearRoute" class="secondary" disabled>Route löschen</button>
+        <button id="fitAll" class="secondary">Alles anzeigen</button>
+      </div>
     </div>
+
+    <div class="status" id="status">Lade Daten…</div>
+    <div class="list" id="list"></div>
   </div>
-</div>
 
-<!-- Zertifikate + Produkt -->
-<div class="cert-box">
-  <b>Zertifikate</b><br>
-  <label><input type="checkbox" id="chkCertSURE" checked> 1 (SURE)</label><br>
-  <label><input type="checkbox" id="chkCertPEFC" checked> 2 (PEFC)</label><br>
-  <label><input type="checkbox" id="chkOhneZert" checked> Kein Zertifikat</label>
-  <hr>
-  <b>Produkt</b><br>
-  <label><input type="checkbox" id="chkHackschnitzel" checked> Hackschnitzel</label><br>
-  <label><input type="checkbox" id="chkSaegespaene" checked> Sägespäne</label><br>
-  <label><input type="checkbox" id="chkSiebmaterial" checked> Siebmaterial</label>
-</div>
-
-<!-- Legende -->
-<div class="legend">
-  <b>Filter Farben</b><br>
-  <label><input type="checkbox" id="chkGruen" checked> 🟢 ≤ 260 €</label><br>
-  <label><input type="checkbox" id="chkOrange" checked> 🟠 260–285 €</label><br>
-  <label><input type="checkbox" id="chkRot" checked> 🔴 ≥ 285 €</label><br>
-  <label><input type="checkbox" id="chkGrau" checked> ⚪ kein Preis</label><br>
-  <label><input type="checkbox" id="chkKunden" checked> 🔷 Pelletwerk</label>
+  <div id="map"></div>
 </div>
 
 <script>
-  // =======================
-  // Karte
-  // =======================
-  const map = L.map("map", { maxZoom: 19 }).setView([51, 11], 5);
-  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    minZoom: 4, maxZoom: 19, attribution: "&copy; OpenStreetMap"
-  }).addTo(map);
+/* =========================
+   LINKS (EINGETRAGEN)
+   ========================= */
+const SHEETS_FIRMEN_CSV_URL =
+  "https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/export?format=csv&gid=0";
 
-  function colorForPrice(p, keinPreis) {
-    if (keinPreis) return "#9e9e9e";
-    if (!p || p <= 0 || isNaN(p)) return "#9e9e9e";
-    if (p <= 260) return "green";
-    if (p < 285) return "orange";
-    return "red";
-  }
+const SHEETS_KUNDEN_CSV_URL =
+  "https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/export?format=csv&gid=0";
 
-  // =======================
-  // GeoCache + Geocode
-  // =======================
-  const GEO_CACHE_KEY = "geoCacheProdukte_EU_v3";
-  const geoCache = JSON.parse(localStorage.getItem(GEO_CACHE_KEY) || "{}");
-  const inFlight = new Map();
+/* =========================
+   PREIS-LOGIK (OPTIONAL)
+   =========================
+   Wenn du nur "Basispreis aus Tabelle" willst: rateProKm überall 0 lassen.
+   Wenn du km-Zuschlag willst: Werte eintragen.
+*/
+const rateProKm = {
+  "Hackschnitzel": 0,   // z.B. 0.12
+  "Sägespäne": 0,       // z.B. 0.10
+  "Saegespaene": 0,     // falls ohne Umlaut irgendwo vorkommt
+  "Siebmaterial": 0     // z.B. 0.15
+};
 
-  async function geocodeOnce(q) {
-    if (geoCache[q] && geoCache[q].country_code) return geoCache[q];
-    if (inFlight.has(q)) return inFlight.get(q);
+/* =========================
+   LEAFLET INIT
+   ========================= */
+const map = L.map("map").setView([51.0, 10.0], 6);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+  maxZoom: 19,
+  attribution: '&copy; OpenStreetMap'
+}).addTo(map);
 
-    const p = (async ()=>{
-      const r = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(q)}&limit=1&accept-language=de`,
-        { headers: { "Accept": "application/json" } }
-      );
-      const d = await r.json();
-      if (d && d.length) {
-        const item = d[0];
-        const obj = {
-          lat: +item.lat,
-          lon: +item.lon,
-          country: item.address && item.address.country ? item.address.country : "",
-          country_code: item.address && item.address.country_code ? item.address.country_code.toLowerCase() : ""
-        };
-        geoCache[q] = obj;
-        localStorage.setItem(GEO_CACHE_KEY, JSON.stringify(geoCache));
-        return obj;
-      }
-      return null;
-    })();
+const markersLayer = L.layerGroup().addTo(map);
+let routeLine = null;
 
-    inFlight.set(q, p);
-    try { return await p; }
-    finally { inFlight.delete(q); }
-  }
+/* =========================
+   STATE
+   ========================= */
+let firmen = [];
+let kunden = [];
 
-  async function geocodeWithFallback(queries){
-    for (const q of queries) {
-      const qq = (q || "").trim();
-      if (!qq) continue;
-      const res = await geocodeOnce(qq);
-      if (res) return res;
+let mode = "firmen";
+let activeProducts = new Set(); // nur Firmen
+let filterSURE = false;
+let filterPEFC = false;
+
+let startPick = null;
+let endPick = null;
+
+/* =========================
+   HELPERS
+   ========================= */
+function setStatus(msg, warn=false) {
+  const el = document.getElementById("status");
+  el.textContent = msg;
+  el.className = "status" + (warn ? " warn" : "");
+}
+
+function escapeHtml(s) {
+  return String(s ?? "")
+    .replaceAll("&","&amp;").replaceAll("<","&lt;")
+    .replaceAll(">","&gt;").replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+function normalizeStr(s) {
+  return String(s ?? "").trim();
+}
+
+function toNumber(val) {
+  if (val === null || val === undefined) return NaN;
+  const s = String(val).trim();
+  if (!s) return NaN;
+  const cleaned = s.replace("€", "").replace(/\s/g, "").replace(",", ".");
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : NaN;
+}
+
+function formatEUR(n) {
+  return `${n.toFixed(2)} €`;
+}
+
+// Simple CSV parser (für Google CSV reicht das normal)
+function parseCSV(text) {
+  const rows = [];
+  let row = [];
+  let cur = "";
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    const next = text[i+1];
+
+    if (c === '"' ) {
+      if (inQuotes && next === '"') { cur += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (c === "," && !inQuotes) {
+      row.push(cur); cur = "";
+    } else if ((c === "\n" || c === "\r") && !inQuotes) {
+      if (c === "\r" && next === "\n") i++;
+      row.push(cur);
+      rows.push(row);
+      row = [];
+      cur = "";
+    } else {
+      cur += c;
     }
-    return null;
   }
+  if (cur.length || row.length) { row.push(cur); rows.push(row); }
 
-  // =======================
-  // Icons
-  // =======================
-  const blauesDreieck = L.divIcon({
-    className: "custom-triangle",
-    html: `<svg width="24" height="24" viewBox="0 0 24 24">
-             <polygon points="12,2 22,22 2,22" fill="blue" stroke="black" stroke-width="1"/>
-           </svg>`,
-    iconAnchor: [12,22],
-    popupAnchor: [0,-20]
+  const header = rows.shift()?.map(h => h.trim()) ?? [];
+  return rows
+    .filter(r => r.some(cell => String(cell).trim() !== ""))
+    .map(r => {
+      const obj = {};
+      header.forEach((h, idx) => obj[h] = r[idx] ?? "");
+      return obj;
+    });
+}
+
+/* =========================
+   GEO: Address -> LatLng
+   ========================= */
+async function geocodeNominatim(query) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`;
+  const res = await fetch(url, { headers: { "Accept": "application/json" } });
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data?.length) return null;
+  return { lat: Number(data[0].lat), lon: Number(data[0].lon) };
+}
+
+function buildAddress(row) {
+  // deine Spalten (vom Screenshot): plz, ort (enthält oft Straße), land
+  const plz = normalizeStr(row.plz);
+  const ort = normalizeStr(row.ort);
+  const land = normalizeStr(row.land);
+  return [ort, plz, land].filter(Boolean).join(", ");
+}
+
+/* =========================
+   PRODUKTE aus deiner Struktur:
+   produkt/preis, produkt_2/preis_2, ...
+   ========================= */
+function getProductsFromRow(row) {
+  const products = [];
+  for (let i = 1; i <= 4; i++) {
+    const pKey = i === 1 ? "produkt" : `produkt_${i}`;
+    const priceKey = i === 1 ? "preis" : `preis_${i}`;
+
+    const name = normalizeStr(row[pKey]);
+    const base = toNumber(row[priceKey]);
+
+    if (name && Number.isFinite(base)) {
+      products.push({ name, base });
+    }
+  }
+  return products;
+}
+
+function getAllProductNamesFromFirmen(list) {
+  const set = new Set();
+  for (const f of list) {
+    for (const p of getProductsFromRow(f)) set.add(p.name);
+  }
+  return Array.from(set).sort((a,b) => a.localeCompare(b, "de"));
+}
+
+/* =========================
+   ZERTIFIKATE (Spalte Q)
+   1 = SURE, 2 = PEFC
+   (du hast gesagt: in Spalte Q stehen die Codes)
+   ========================= */
+function parseCerts(row) {
+  // falls Header nicht "Q" heißt: ändere hier (z.B. "zertifikate")
+  const raw = normalizeStr(row.Q ?? row.q ?? row.zertifikate ?? row.Zertifikate);
+  const tokens = raw
+    .split(/[,; ]+/)
+    .map(t => t.trim())
+    .filter(Boolean);
+
+  const hasSURE = tokens.includes("1") || tokens.some(t => t.toLowerCase() === "sure");
+  const hasPEFC = tokens.includes("2") || tokens.some(t => t.toLowerCase() === "pefc");
+
+  return { hasSURE, hasPEFC };
+}
+
+/* =========================
+   ROUTING (OSRM)
+   ========================= */
+async function fetchRoute(a, b) {
+  const url = `https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=full&geometries=geojson`;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  const data = await res.json();
+  if (!data?.routes?.length) return null;
+  return data.routes[0];
+}
+
+function kmFromMeters(m) { return m / 1000; }
+function minFromSeconds(s) { return s / 60; }
+
+function formatDuration(sec) {
+  const mins = Math.round(minFromSeconds(sec));
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  if (h <= 0) return `${m} min`;
+  return `${h}h ${String(m).padStart(2, "0")}min`;
+}
+
+/* =========================
+   PREISE anzeigen + berechnen
+   ========================= */
+function buildPriceLinesForPopup(row, distanceKm) {
+  const prods = getProductsFromRow(row);
+
+  if (!prods.length) return `<div class="muted">Keine Produkte eingetragen.</div>`;
+
+  const lines = prods.map(p => {
+    const r = rateProKm[p.name] ?? rateProKm[p.name.replaceAll("ä","ae").replaceAll("Ä","Ae")] ?? 0;
+    const total = p.base + (distanceKm * r);
+    return `<div><b>${escapeHtml(p.name)}:</b> ${formatEUR(total)}</div>`;
   });
 
-  const ortIcon = L.divIcon({
-    className: "custom-place",
-    html: `<svg width="26" height="26" viewBox="0 0 24 24">
-      <path d="M12 2c-3.3 0-6 2.7-6 6 0 4.5 6 14 6 14s6-9.5 6-14c0-3.3-2.7-6-6-6z" fill="#111" stroke="#fff" stroke-width="1.2"/>
-      <circle cx="12" cy="8" r="2.4" fill="#fff"/>
-    </svg>`,
-    iconAnchor: [13,24],
-    popupAnchor: [0,-18]
+  return lines.join("");
+}
+
+/* =========================
+   UI + RENDER
+   ========================= */
+function renderProductChips() {
+  const el = document.getElementById("productChips");
+  el.innerHTML = "";
+
+  if (mode !== "firmen") {
+    el.innerHTML = `<span class="muted">Nur bei Firmen verfügbar.</span>`;
+    return;
+  }
+
+  const products = getAllProductNamesFromFirmen(firmen);
+  if (!products.length) {
+    el.innerHTML = `<span class="muted">Keine Produkte gefunden.</span>`;
+    return;
+  }
+
+  for (const name of products) {
+    const chip = document.createElement("span");
+    chip.className = "chip" + (activeProducts.has(name) ? " active" : "");
+    chip.textContent = name;
+    chip.onclick = () => {
+      if (activeProducts.has(name)) activeProducts.delete(name);
+      else activeProducts.add(name);
+      renderAll();
+    };
+    el.appendChild(chip);
+  }
+}
+
+function matchesSearch(row, q) {
+  if (!q) return true;
+  q = q.toLowerCase();
+  const fields = [
+    row.firma, row.plz, row.ort, row.land,
+    row.kunde, row.name, row.adresse
+  ].map(x => String(x ?? "").toLowerCase());
+  return fields.some(v => v.includes(q));
+}
+
+function firmHasActiveProduct(row) {
+  if (activeProducts.size === 0) return true;
+  const names = getProductsFromRow(row).map(p => p.name);
+  return names.some(n => activeProducts.has(n));
+}
+
+function firmMatchesCertFilter(row) {
+  if (!filterSURE && !filterPEFC) return true;
+  const c = parseCerts(row);
+  if (filterSURE && !c.hasSURE) return false;
+  if (filterPEFC && !c.hasPEFC) return false;
+  return true;
+}
+
+function clearMarkers() {
+  markersLayer.clearLayers();
+}
+
+function addMarkerForRow(row, kind) {
+  // kind: "firma" | "kunde"
+  const lat = toNumber(row.lat ?? row.latitude);
+  const lon = toNumber(row.lon ?? row.lng ?? row.longitude);
+
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+
+  const title = kind === "firma"
+    ? normalizeStr(row.firma || row.name || "Firma")
+    : normalizeStr(row.kunde || row.name || "Kunde");
+
+  const addr = kind === "firma" ? buildAddress(row) : normalizeStr(row.ort || row.adresse || "");
+
+  const cert = kind === "firma" ? parseCerts(row) : { hasSURE:false, hasPEFC:false };
+  const badges = [];
+  if (cert.hasSURE) badges.push(`<span class="badge">SURE</span>`);
+  if (cert.hasPEFC) badges.push(`<span class="badge">PEFC</span>`);
+
+  const productsHtml = kind === "firma"
+    ? (() => {
+        const ps = getProductsFromRow(row);
+        if (!ps.length) return `<div class="muted">Keine Produkte</div>`;
+        return ps.map(p => `<div>${escapeHtml(p.name)}: ${formatEUR(p.base)}</div>`).join("");
+      })()
+    : "";
+
+  const popup = `
+    <div style="min-width:240px">
+      <div style="font-weight:700">${escapeHtml(title)}</div>
+      <div class="muted" style="margin-top:2px">${escapeHtml(addr)}</div>
+      ${badges.length ? `<div style="margin-top:8px">${badges.join("")}</div>` : ""}
+      ${kind === "firma" ? `<div class="hr"></div>${productsHtml}` : ""}
+    </div>
+  `;
+
+  const m = L.marker([lat, lon]).bindPopup(popup);
+  m.addTo(markersLayer);
+  return m;
+}
+
+function listItemHtml(row, kind) {
+  const title = kind === "firma"
+    ? normalizeStr(row.firma || row.name || "Firma")
+    : normalizeStr(row.kunde || row.name || "Kunde");
+
+  const addr = kind === "firma" ? buildAddress(row) : normalizeStr(row.ort || row.adresse || "");
+
+  let meta = `<div class="item-sub">${escapeHtml(addr)}</div>`;
+
+  if (kind === "firma") {
+    const cert = parseCerts(row);
+    const badges = [];
+    if (cert.hasSURE) badges.push("SURE");
+    if (cert.hasPEFC) badges.push("PEFC");
+    if (badges.length) meta += `<div class="item-sub">Zertifikate: ${badges.join(", ")}</div>`;
+
+    const prods = getProductsFromRow(row);
+    if (prods.length) {
+      meta += `<div class="item-sub">Produkte: ${prods.map(p => p.name).join(", ")}</div>`;
+    }
+  }
+
+  return `
+    <div class="item">
+      <div class="item-title">${escapeHtml(title)}</div>
+      ${meta}
+      <div class="item-actions">
+        <button class="smallbtn" data-action="zoom">Zoomen</button>
+        <button class="smallbtn primary" data-action="start">Start</button>
+        <button class="smallbtn primary" data-action="ziel">Ziel</button>
+      </div>
+    </div>
+  `;
+}
+
+function getRowLatLon(row) {
+  const lat = toNumber(row.lat ?? row.latitude);
+  const lon = toNumber(row.lon ?? row.lng ?? row.longitude);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  return { lat, lon };
+}
+
+function updateRouteStatus() {
+  const el = document.getElementById("routeStatus");
+  const s = startPick ? startPick.title : "—";
+  const z = endPick ? endPick.title : "—";
+  el.textContent = `Start: ${s}  |  Ziel: ${z}`;
+}
+
+function clearRoute() {
+  if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
+  startPick = null;
+  endPick = null;
+  updateRouteStatus();
+  document.getElementById("clearRoute").disabled = true;
+}
+
+async function buildRouteIfReady() {
+  if (!startPick || !endPick) return;
+
+  const a = startPick.ll;
+  const b = endPick.ll;
+
+  const route = await fetchRoute(a, b);
+  if (!route) {
+    alert("Route konnte nicht berechnet werden.");
+    return;
+  }
+
+  const coords = route.geometry.coordinates.map(([lon, lat]) => [lat, lon]);
+  if (routeLine) map.removeLayer(routeLine);
+  routeLine = L.polyline(coords, { weight: 5 }).addTo(map);
+
+  const bounds = routeLine.getBounds();
+  map.fitBounds(bounds.pad(0.15));
+
+  const distanceKm = kmFromMeters(route.distance);
+  const duration = formatDuration(route.duration);
+
+  // Popup: Preise nur wenn Ziel/Start eine Firma ist
+  const startIsFirma = startPick.kind === "firma";
+  const endIsFirma = endPick.kind === "firma";
+
+  let pricesHtml = "";
+  // Wenn Start eine Firma ist: nimm deren Produkte
+  if (startIsFirma) pricesHtml = buildPriceLinesForPopup(startPick.row, distanceKm);
+  // sonst wenn Ziel eine Firma ist: nimm deren Produkte
+  else if (endIsFirma) pricesHtml = buildPriceLinesForPopup(endPick.row, distanceKm);
+
+  const popupHtml = `
+    <div style="min-width:260px">
+      <div><b>Route:</b> ${escapeHtml(startPick.title)} ↔ ${escapeHtml(endPick.title)}</div>
+      <div class="hr"></div>
+      <div><b>Entfernung:</b> ${distanceKm.toFixed(1)} km</div>
+      <div><b>Dauer:</b> ${escapeHtml(duration)}</div>
+      ${pricesHtml ? `<div class="hr"></div>${pricesHtml}` : ""}
+    </div>
+  `;
+
+  routeLine.bindPopup(popupHtml).openPopup();
+
+  document.getElementById("clearRoute").disabled = false;
+}
+
+/* =========================
+   RENDER ALL
+   ========================= */
+function renderAll() {
+  clearMarkers();
+
+  const q = normalizeStr(document.getElementById("search").value);
+  const listEl = document.getElementById("list");
+  listEl.innerHTML = "";
+
+  const data = (mode === "firmen") ? firmen : kunden;
+  const kind = (mode === "firmen") ? "firma" : "kunde";
+
+  const filtered = data.filter(row => {
+    if (!matchesSearch(row, q)) return false;
+
+    if (mode === "firmen") {
+      if (!firmHasActiveProduct(row)) return false;
+      if (!firmMatchesCertFilter(row)) return false;
+    }
+    return true;
   });
 
-  // =======================
-  // Tabellen Links
-  // =======================
-  const sheetUrlFirmen = "https://docs.google.com/spreadsheets/d/1GIBV-WAyaslfi175jpbif0bHw8YWAhriifM7CtDUB2k/gviz/tq?tqx=out:csv&gid=0";
-  const sheetUrlKunden = "https://docs.google.com/spreadsheets/d/148jjtRze9SmuFsDNRfoM_nwEih7GbCzOjMUQEAb78pg/gviz/tq?tqx=out:csv&gid=0";
-
-  async function loadCsvAsObjects(url){
-    const res = await fetch(url, { cache: "no-store" });
-    const text = await res.text();
-    const head = text.slice(0, 150).toLowerCase();
-    if (head.includes("<html") || head.includes("<!doctype")) throw new Error("Google liefert HTML statt CSV.");
-    const parsed = Papa.parse(text, { header:true, skipEmptyLines:true });
-    return (parsed.data || []).filter(r => r && Object.keys(r).length);
+  const markers = [];
+  for (const row of filtered) {
+    const m = addMarkerForRow(row, kind);
+    if (m) markers.push(m);
   }
 
-  // =======================
-  // Produkt + Zertifikate
-  // =======================
-  function normProduktName(p){
-    const s = (p || "").toLowerCase();
-    if (s.includes("hackschnitzel")) return "hackschnitzel";
-    if (s.includes("sägespäne") || s.includes("saegespaene") || s.includes("sägespaene") || s.includes("saegespäne")) return "saegespaene";
-    if (s.includes("siebmaterial")) return "siebmaterial";
-    return "";
-  }
+  // Liste bauen
+  for (const row of filtered) {
+    const itemWrap = document.createElement("div");
+    itemWrap.innerHTML = listItemHtml(row, kind);
 
-  function normalizeCertString(s){
-    return String(s||"")
-      .replace(/;/g, ",")
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .trim();
-  }
-  function certHasSure(cert){ return normalizeCertString(cert).includes("sure"); }
-  function certHasPefc(cert){ return normalizeCertString(cert).includes("pefc"); }
-  function prettyCertList(cert){
-    const c = normalizeCertString(cert);
-    const list = [];
-    if (c.includes("sure")) list.push("SURE");
-    if (c.includes("pefc")) list.push("PEFC");
-    return list.join(", ");
-  }
+    const item = itemWrap.firstElementChild;
+    const ll = getRowLatLon(row);
 
-  // =======================
-  // ✅ Preis-Berechnungen
-  // =======================
-  // Hackschnitzel / Sägespäne:
-  // <200km: ((F*90)/90 + ((2.15*km)/90))*1.05
-  // >=200km: ((F*90)/90 + ((1.85*km)/90))*1.05
-  function calcHolzProdukt(ek, km){
-    const F = (isFinite(ek) && ek > 0) ? ek : null;
-    if (F === null) return null;
-
-    const G = 90;
-    const J = 90;
-    const K = 1.05;
-    const H = (km < 200) ? 2.15 : 1.85;
-    const I = km;
-
-    const value = (((F * G) / G) + ((H * I) / J)) * K;
-    return value;
-  }
-
-  // Siebmaterial:
-  // =(((EK*21,50)+(1,85*km))/11,8)*1,05
-  function calcSiebmaterial(ek, km){
-    const EK = (isFinite(ek) && ek > 0) ? ek : null;
-    if (EK === null) return null;
-
-    const TONNE = 21.50;
-    const KMSATZ = 1.85;
-    const ATRO = 11.8;
-    const MARGE = 1.05;
-
-    const value = ((((EK * TONNE) + (KMSATZ * km)) / ATRO) * MARGE);
-    return value;
-  }
-
-  // Für Markerfarbe: günstigster aktiver berechneter Preis
-  function activeCalcPriceForFirma(w, kmForColor=250){
-    const showH = document.getElementById("chkHackschnitzel")?.checked ?? true;
-    const showS = document.getElementById("chkSaegespaene")?.checked ?? true;
-    const showM = document.getElementById("chkSiebmaterial")?.checked ?? true;
-
-    const list = [];
-
-    if (showH && w.prices?.hackschnitzel !== undefined) {
-      const v = calcHolzProdukt(w.prices.hackschnitzel, kmForColor);
-      if (v !== null) list.push(v);
-    }
-    if (showS && w.prices?.saegespaene !== undefined) {
-      const v = calcHolzProdukt(w.prices.saegespaene, kmForColor);
-      if (v !== null) list.push(v);
-    }
-    if (showM && w.prices?.siebmaterial !== undefined) {
-      const v = calcSiebmaterial(w.prices.siebmaterial, kmForColor);
-      if (v !== null) list.push(v);
+    // falls kein lat/lon: warn in UI
+    if (!ll) {
+      const sub = item.querySelector(".item-sub");
+      if (sub) sub.innerHTML += `<div class="item-sub warn">⚠️ Kein lat/lon in Tabelle (oder nicht numerisch)</div>`;
     }
 
-    if (!list.length) return { price: 0, keinPreis: true };
-    return { price: Math.min(...list), keinPreis: false };
-  }
+    item.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const action = btn.getAttribute("data-action");
+        if (!ll) {
+          alert("Für diesen Eintrag fehlen lat/lon. Entweder Spalten hinzufügen oder Geocoding einbauen.");
+          return;
+        }
 
-  // =======================
-  // Parser Firmen/Kunden
-  // =======================
-  function parseFirmen(rows){
-    const lc = (s)=>String(s||"").toLowerCase().trim();
-    const keys = Object.keys(rows[0]||{});
-    const findKey = (cands) => keys.find(k => cands.includes(lc(k)));
+        const title = (kind === "firma")
+          ? normalizeStr(row.firma || row.name || "Firma")
+          : normalizeStr(row.kunde || row.name || "Kunde");
 
-    const firmaKey = findKey(["firma","name","werk"]) || "firma";
-    const plzKey   = findKey(["plz","zip","postcode","postleitzahl"]) || "plz";
-    const ortKey   = findKey(["ort","stadt","location","standort","adresse"]) || "ort";
-    const landKey  = findKey(["land","country"]) || "land";
+        if (action === "zoom") {
+          map.setView([ll.lat, ll.lon], 11);
+        }
 
-    const zertKeyHeader = keys.find(k => ["zertifikate","zertifikat","zert","cert"].includes(lc(k)));
-    const zertKeyQ = keys.find(k => lc(k) === "q");
-    const zertKey = zertKeyHeader || zertKeyQ;
+        if (action === "start") {
+          startPick = { title, ll, kind, row };
+          updateRouteStatus();
+          await buildRouteIfReady();
+        }
 
-    const produktKeys = keys.filter(k => lc(k).startsWith("produkt"));
-    const preisKeys   = keys.filter(k => lc(k).startsWith("preis"));
-
-    return rows.map(x => {
-      const prices = {};
-      const pairs = Math.max(produktKeys.length, preisKeys.length);
-
-      for (let i=0; i<pairs; i++){
-        const pKey = produktKeys[i];
-        const rKey = preisKeys[i];
-
-        const prodRaw = pKey ? (x?.[pKey] || "").toString().trim() : "";
-        const priceRaw = rKey ? (x?.[rKey] ?? "").toString() : "";
-
-        const prodNorm = normProduktName(prodRaw);
-        const priceVal = parseFloat(String(priceRaw).replace(",", "."));
-
-        if (prodNorm && isFinite(priceVal) && priceVal > 0) prices[prodNorm] = priceVal;
-        else if (prodNorm && !(prodNorm in prices)) prices[prodNorm] = 0;
-      }
-
-      return {
-        firma: (x[firmaKey]||"").toString().trim(),
-        plz: (x[plzKey]||"").toString().trim(),
-        ort: (x[ortKey]||"").toString().trim(),
-        land:(x[landKey]||"").toString().trim(),
-        prices,
-        zert: zertKey ? (x?.[zertKey]||"").toString().trim() : ""
-      };
-    }).filter(w => w.firma && (w.plz || w.ort));
-  }
-
-  function parseKunden(rows){
-    const lc = (s)=>String(s||"").toLowerCase().trim();
-    const keys = Object.keys(rows[0]||{});
-    const findKey = (cands) => keys.find(k => cands.includes(lc(k)));
-
-    const kundeKey = findKey(["kunde","name","firma","unternehmen"]) || "kunde";
-    const plzKey   = findKey(["plz","zip","postcode","postleitzahl"]) || "plz";
-    const ortKey   = findKey(["ort","stadt","location","adresse","standort"]) || "ort";
-    const landKey  = findKey(["land","country"]) || "land";
-
-    return rows.map(x => ({
-      name: (x[kundeKey]||"").toString().trim(),
-      plz: (x[plzKey]||"").toString().trim(),
-      ort: (x[ortKey]||"").toString().trim(),
-      land: (x[landKey]||"").toString().trim()
-    })).filter(k => k.name && (k.plz || k.ort));
-  }
-
-  // Tooltip Firma (zeigt Zertifikate + EKs, aber ohne Rechnungsformel)
-  function tooltipHtmlFirma(m){
-    const landInfo = m.land ? `<br><b>Land:</b> ${m.land}` : "";
-    const place = `${m.plz ? m.plz+" " : ""}${m.ort || ""}`.trim();
-
-    const pH = m.prices?.hackschnitzel;
-    const pS = m.prices?.saegespaene;
-    const pM = m.prices?.siebmaterial;
-
-    const lineH = (pH !== undefined) ? `<b>Hackschnitzel (EK):</b> ${isFinite(pH) && pH>0 ? pH.toFixed(2)+" €" : "–"}` : "";
-    const lineS = (pS !== undefined) ? `<b>Sägespäne (EK):</b> ${isFinite(pS) && pS>0 ? pS.toFixed(2)+" €" : "–"}` : "";
-    const lineM = (pM !== undefined) ? `<b>Siebmaterial (EK):</b> ${isFinite(pM) && pM>0 ? pM.toFixed(2)+" €" : "–"}` : "";
-
-    const certPretty = prettyCertList(m.zert);
-    const certLine = certPretty ? `<br><b>Zertifikat:</b> ${certPretty}` : (m.zert ? `<br><b>Zertifikat:</b> ${m.zert}` : "");
-
-    const lines = [lineH,lineS,lineM].filter(Boolean).join("<br>");
-    return `<b>${m.firma}</b><br>${place}${landInfo}${certLine}${lines ? "<br>"+lines : ""}`;
-  }
-
-  // =======================
-  // State
-  // =======================
-  let werke = [], kunden = [], alleMarker = [], selectedPoints = [], routeLine = null;
-  let tempSearchMarker = null;
-
-  function buildQueries(obj){
-    const plz = (obj.plz||"").trim();
-    const ort = (obj.ort||"").trim();
-    const land = (obj.land||"").trim();
-
-    const q1 = `${plz} ${ort}, ${land}`.replace(/\s+/g," ").trim();
-    const q2 = `${plz} ${ort}`.replace(/\s+/g," ").trim();
-    const q3 = `${ort}, ${land}`.replace(/\s+/g," ").trim();
-    const q4 = `${ort}`.trim();
-    return [q1,q2,q3,q4];
-  }
-
-  async function ladeDaten(){
-    const [firmenRows, kundenRows] = await Promise.all([
-      loadCsvAsObjects(sheetUrlFirmen),
-      loadCsvAsObjects(sheetUrlKunden)
-    ]);
-    werke = parseFirmen(firmenRows);
-    kunden = parseKunden(kundenRows);
-  }
-
-  async function buildMap(){
-    alleMarker = [];
-    const bounds = L.latLngBounds();
-
-    const firmGeo = await Promise.all(werke.map(async (w)=>({ w, c: await geocodeWithFallback(buildQueries(w)) })));
-    for (const item of firmGeo){
-      if(!item.c) continue;
-      const { w, c } = item;
-
-      const ap = activeCalcPriceForFirma(w, 250);
-      const initColor = colorForPrice(ap.price, ap.keinPreis);
-
-      const circle = L.circleMarker([c.lat,c.lon],{
-        radius:8,
-        color:initColor,
-        fillColor:initColor,
-        fillOpacity:0.85
+        if (action === "ziel") {
+          endPick = { title, ll, kind, row };
+          updateRouteStatus();
+          await buildRouteIfReady();
+        }
       });
-
-      const markerObj = {
-        type:"firma",
-        marker: circle,
-        firma:w.firma,
-        plz:w.plz,
-        ort:w.ort,
-        land:w.land,
-        zert:(w.zert||""),
-        zert_norm: normalizeCertString(w.zert||""),
-        country_code:(c.country_code||""),
-        prices: w.prices || {}
-      };
-
-      circle.bindTooltip("", {sticky:true})
-        .on("tooltipopen", ()=> circle.getTooltip().setContent(tooltipHtmlFirma(markerObj)))
-        .on("click",()=>handleMarkerClick(markerObj.firma,c));
-
-      alleMarker.push(markerObj);
-      bounds.extend([c.lat,c.lon]);
-    }
-
-    const kundGeo = await Promise.all(kunden.map(async (k)=>({ k, c: await geocodeWithFallback(buildQueries(k)) })));
-    for (const item of kundGeo){
-      if(!item.c) continue;
-      const { k, c } = item;
-
-      const place = `${k.plz ? k.plz+" " : ""}${k.ort || ""}`.trim();
-      const m = L.marker([c.lat,c.lon],{icon:blauesDreieck})
-        .bindTooltip(`<b>${k.name}</b><br>${place}${k.land ? "<br>" + k.land : ""}`,{sticky:true})
-        .on("click",()=>handleMarkerClick(k.name,c));
-
-      alleMarker.push({ type:"kunde", marker:m, country_code:(c.country_code||"") });
-      bounds.extend([c.lat,c.lon]);
-    }
-
-    if(bounds.isValid()) map.fitBounds(bounds.pad(0.15));
-    updateLayers();
-  }
-
-  // =======================
-  // Filter / Layer
-  // =======================
-  function getSelectedCountries() {
-    const chks = document.querySelectorAll(".countryChk");
-    const selected = [];
-    chks.forEach(ch => { if (ch.checked) selected.push(ch.value); });
-    if (selected.length === 0 || selected.includes("all")) return ["all"];
-    return selected;
-  }
-
-  function updateCountryButtonLabel() {
-    const btn = document.getElementById("countryDropdownBtn");
-    if (!btn) return;
-
-    const selected = getSelectedCountries();
-    if (selected.length === 1 && selected[0] === "all") btn.textContent = "Alle Länder";
-    else {
-      const names = {
-        de:"DE", at:"AT", pl:"PL", cz:"CZ", fr:"FR", ch:"CH", be:"BE", sk:"SK",
-        dk:"DK", ee:"EE", fi:"FI", it:"IT", lv:"LV", lt:"LT", nl:"NL", se:"SE", gb:"GB"
-      };
-      btn.textContent = selected.map(c => names[c] || c.toUpperCase()).join(", ");
-    }
-  }
-
-  function updateLayers(){
-    alleMarker.forEach(m=>{
-      if (m.marker && map.hasLayer(m.marker)) map.removeLayer(m.marker);
     });
 
-    const selectedCountries = getSelectedCountries();
-    const noCountryFilter = selectedCountries.length === 1 && selectedCountries[0] === "all";
-
-    const wantSURE = document.getElementById("chkCertSURE")?.checked ?? true;
-    const wantPEFC = document.getElementById("chkCertPEFC")?.checked ?? true;
-    const wantOHNE = document.getElementById("chkOhneZert")?.checked ?? true;
-
-    const gruen  = document.getElementById("chkGruen")?.checked ?? true;
-    const orange = document.getElementById("chkOrange")?.checked ?? true;
-    const rot    = document.getElementById("chkRot")?.checked ?? true;
-    const grau   = document.getElementById("chkGrau")?.checked ?? true;
-
-    const kundenFlag = document.getElementById("chkKunden")?.checked ?? true;
-
-    const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
-    const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
-    const showSieb  = document.getElementById("chkSiebmaterial")?.checked ?? true;
-
-    for(const m of alleMarker){
-      if(m.type === "kunde"){
-        if (kundenFlag) {
-          if (noCountryFilter || (m.country_code && selectedCountries.includes(m.country_code))) map.addLayer(m.marker);
-        }
-        continue;
-      }
-
-      // Produkt-Existenz
-      const hasH = m.prices?.hackschnitzel !== undefined;
-      const hasS = m.prices?.saegespaene !== undefined;
-      const hasM = m.prices?.siebmaterial !== undefined;
-
-      if (!showHacks && !showSaeg && !showSieb) continue;
-      if ((showHacks || showSaeg || showSieb) && !(
-        (showHacks && hasH) || (showSaeg && hasS) || (showSieb && hasM)
-      )) continue;
-
-      // Zertifikats-Filter
-      const certNorm = normalizeCertString(m.zert || "");
-      const hasSure = certHasSure(certNorm);
-      const hasPefc = certHasPefc(certNorm);
-      const hasNone = !certNorm;
-
-      let certOK = false;
-      if (hasSure && wantSURE) certOK = true;
-      if (hasPefc && wantPEFC) certOK = true;
-      if (hasNone && wantOHNE) certOK = true;
-      if (!certOK) continue;
-
-      // Landfilter
-      if (!noCountryFilter) {
-        if (!m.country_code || !selectedCountries.includes(m.country_code)) continue;
-      }
-
-      // Farbe nach berechnetem aktiven Preis
-      const ap = activeCalcPriceForFirma(m, 250);
-      const aktiveFarbe = colorForPrice(ap.price, ap.keinPreis);
-
-      const isGruen  = aktiveFarbe === "green";
-      const isOrange = aktiveFarbe === "orange";
-      const isRot    = aktiveFarbe === "red";
-      const isGrau   = aktiveFarbe === "#9e9e9e";
-
-      let sichtbar = false;
-      if(isGruen && gruen) sichtbar = true;
-      if(isOrange && orange) sichtbar = true;
-      if(isRot && rot) sichtbar = true;
-      if(isGrau && grau) sichtbar = true;
-      if(!sichtbar) continue;
-
-      if (m.marker && m.marker.setStyle) m.marker.setStyle({ color: aktiveFarbe, fillColor: aktiveFarbe });
-      if (m.marker && m.marker.getTooltip) m.marker.getTooltip().setContent( tooltipHtmlFirma(m) );
-
-      map.addLayer(m.marker);
-    }
+    listEl.appendChild(item);
   }
 
-  // =======================
-  // ROUTE
-  // =======================
-  function handleMarkerClick(label,coord){
-    selectedPoints.push({label,coord});
-    if(selectedPoints.length===2){
-      const [a,b]=selectedPoints;
-      showRoute(a,b);
-      selectedPoints=[];
-    }
+  setStatus(`${filtered.length} ${mode === "firmen" ? "Firmen" : "Kunden"} angezeigt.`);
+}
+
+/* =========================
+   LOAD DATA
+   ========================= */
+async function loadSheetCSV(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`CSV konnte nicht geladen werden: ${res.status}`);
+  const text = await res.text();
+  return parseCSV(text);
+}
+
+async function init() {
+  try {
+    setStatus("Lade Firmen…");
+    firmen = await loadSheetCSV(SHEETS_FIRMEN_CSV_URL);
+
+    setStatus("Lade Kunden…");
+    kunden = await loadSheetCSV(SHEETS_KUNDEN_CSV_URL);
+
+    // Produktchips nur aus Firmen
+    renderProductChips();
+
+    // Erstes rendern
+    renderAll();
+  } catch (e) {
+    console.error(e);
+    setStatus("Fehler beim Laden. Prüfe: Freigabe der Sheets + CSV-Link.", true);
+    alert("Fehler beim Laden der Daten. Prüfe, ob die Google Sheets öffentlich (Jeder mit Link) sind.");
   }
+}
 
-  async function showRoute(a,b){
-    const url = `https://router.project-osrm.org/route/v1/driving/${a.coord.lon},${a.coord.lat};${b.coord.lon},${b.coord.lat}?overview=full&geometries=geojson`;
-    const res = await fetch(url);
-    const data = await res.json();
-    if(!(data.routes && data.routes.length)){
-      alert("Keine Route gefunden!");
-      return;
-    }
+/* =========================
+   EVENTS
+   ========================= */
+document.getElementById("search").addEventListener("input", () => renderAll());
 
-    const route = data.routes[0];
-    const distKm = route.distance / 1000;
-    const distTxt = distKm.toFixed(1);
+document.getElementById("mode").addEventListener("change", (e) => {
+  mode = e.target.value;
+  // Route resetten wenn Modus gewechselt
+  clearRoute();
 
-    const durationMin = route.duration / 60;
-    const hours = Math.floor(durationMin/60);
-    const minutes = Math.round(durationMin%60);
-    const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
+  // Produktchips nur im Firmen-Modus aktiv anzeigen
+  renderProductChips();
+  renderAll();
+});
 
-    const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
+document.getElementById("chipSURE").addEventListener("click", (e) => {
+  filterSURE = !filterSURE;
+  e.target.classList.toggle("active", filterSURE);
+  renderAll();
+});
+document.getElementById("chipPEFC").addEventListener("click", (e) => {
+  filterPEFC = !filterPEFC;
+  e.target.classList.toggle("active", filterPEFC);
+  renderAll();
+});
 
-    // Falls Start/Ziel Firma ist, nehmen wir deren Preise.
-    // (Wenn beide Firmen, nehmen wir die erste gefundene - wie bisher)
-    const firmaObjA = alleMarker.find(m => m.type==="firma" && m.firma === a.label);
-    const firmaObjB = alleMarker.find(m => m.type==="firma" && m.firma === b.label);
-    const firmeneintrag = firmaObjA || firmaObjB;
+document.getElementById("clearRoute").addEventListener("click", () => clearRoute());
 
-    if(routeLine) map.removeLayer(routeLine);
-    routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
-
-    const mid = coords[Math.floor(coords.length/2)];
-
-    let content = `
-      <b>Route:</b> ${a.label} ↔ ${b.label}<br>
-      <b>Entfernung:</b> ${distTxt} km<br>
-      <b>Dauer:</b> ${durationStr}<br>
-      <hr style="border:none;height:1px;background:#eee;margin:8px 0;">
-    `;
-
-    if(!firmeneintrag){
-      content += `<b>Hinweis:</b> Keine Firma ausgewählt – keine Werkpreise verfügbar.`;
-      L.popup().setLatLng(mid).setContent(content).openOn(map);
-      map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
-      return;
-    }
-
-    // ✅ Berechnete Endpreise (nicht EK anzeigen)
-    const ekH = firmeneintrag.prices?.hackschnitzel;
-    const ekS = firmeneintrag.prices?.saegespaene;
-    const ekM = firmeneintrag.prices?.siebmaterial;
-
-    const calcH = (ekH !== undefined) ? calcHolzProdukt(ekH, distKm) : null;
-    const calcS = (ekS !== undefined) ? calcHolzProdukt(ekS, distKm) : null;
-    const calcM = (ekM !== undefined) ? calcSiebmaterial(ekM, distKm) : null;
-
-    const lineH = `<b>Hackschnitzel:</b> ${calcH !== null ? calcH.toFixed(2) + " €" : "–"}`;
-    const lineS = `<b>Sägespäne:</b> ${calcS !== null ? calcS.toFixed(2) + " €" : "–"}`;
-    const lineM = `<b>Siebmaterial:</b> ${calcM !== null ? calcM.toFixed(2) + " €" : "–"}`;
-
-    content += `${lineH}<br>${lineS}<br>${lineM}`;
-
-    L.popup().setLatLng(mid).setContent(content).openOn(map);
-    map.fitBounds(routeLine.getBounds(),{padding:[40,40]});
-  }
-
-  map.on('click', (e) => {
-    const t = e.originalEvent && e.originalEvent.target;
-    if (t && t.closest) {
-      if (t.closest('.leaflet-marker-icon') ||
-          t.closest('.leaflet-popup') ||
-          t.closest('.leaflet-interactive')) return;
-    }
-    if (routeLine) { map.removeLayer(routeLine); routeLine = null; }
-    selectedPoints = [];
-    map.closePopup();
+document.getElementById("fitAll").addEventListener("click", () => {
+  const bounds = [];
+  markersLayer.eachLayer(l => {
+    if (l.getLatLng) bounds.push(l.getLatLng());
   });
+  if (!bounds.length) return;
+  map.fitBounds(L.latLngBounds(bounds).pad(0.2));
+});
 
-  // =======================
-  // Suche kann auch freie Orte geocodieren
-  // =======================
-  async function searchOrGeocode(query){
-    const hit = alleMarker.find(m =>
-      m.marker &&
-      m.marker.getTooltip &&
-      m.marker.getTooltip().getContent &&
-      String(m.marker.getTooltip().getContent()).toLowerCase().includes(query)
-    );
-    if (hit) {
-      const latlng = hit.marker.getLatLng();
-      map.setView(latlng, 9);
-      hit.marker.openTooltip();
-      handleMarkerClick(hit.type==="firma" ? hit.firma : query.toUpperCase(), { lat: latlng.lat, lon: latlng.lng, country_code: hit.country_code || "" });
-      return;
-    }
-
-    const c = await geocodeWithFallback([query]);
-    if(!c){ alert("Kein Treffer gefunden."); return; }
-
-    if (tempSearchMarker) map.removeLayer(tempSearchMarker);
-    tempSearchMarker = L.marker([c.lat, c.lon], { icon: ortIcon })
-      .bindTooltip(`<b>Ort:</b> ${query}`, {sticky:true})
-      .addTo(map);
-
-    map.setView([c.lat, c.lon], 10);
-    tempSearchMarker.openTooltip();
-
-    handleMarkerClick(`Ort: ${query}`, c);
-  }
-
-  // =======================
-  // UI Events
-  // =======================
-  document.addEventListener("change", e => {
-    if (e.target && e.target.matches('input[type="checkbox"]')) {
-      if (e.target.classList.contains("countryChk")) {
-        if (e.target.value === "all" && e.target.checked) {
-          document.querySelectorAll(".countryChk").forEach(ch => { if (ch.value !== "all") ch.checked = false; });
-        } else if (e.target.value !== "all" && e.target.checked) {
-          const allChk = document.querySelector('.countryChk[value="all"]');
-          if (allChk) allChk.checked = false;
-        }
-        updateCountryButtonLabel();
-      }
-      updateLayers();
-    }
-  });
-
-  const countryBtn = document.getElementById("countryDropdownBtn");
-  if (countryBtn) {
-    countryBtn.addEventListener("click", () => {
-      const menu = document.getElementById("countryDropdownMenu");
-      if (!menu) return;
-      menu.style.display = (menu.style.display === "block") ? "none" : "block";
-    });
-  }
-
-  document.addEventListener("click", (e) => {
-    const dd = document.getElementById("countryDropdown");
-    const menu = document.getElementById("countryDropdownMenu");
-    if (!dd || !menu) return;
-    if (!dd.contains(e.target)) menu.style.display = "none";
-  });
-
-  const searchInput = document.getElementById("searchInput");
-  if (searchInput) {
-    searchInput.addEventListener("keydown", async (e) => {
-      if(e.key === "Enter"){
-        const query = e.target.value.toLowerCase().trim();
-        if(!query) return;
-        try{ await searchOrGeocode(query); }
-        catch(err){ console.error(err); alert("Fehler beim Suchen/Geocoding."); }
-      }
-    });
-  }
-
-  // Start
-  (async ()=>{
-    try{
-      await ladeDaten();
-      await buildMap();
-    }catch(err){
-      console.error(err);
-      alert("Fehler beim Laden. Bitte Konsole öffnen (F12) für Details.");
-    }
-  })();
+updateRouteStatus();
+init();
 </script>
 
 </body>
