@@ -110,7 +110,9 @@
   <b>Produkt</b><br>
   <label><input type="checkbox" id="chkHackschnitzel" checked> Hackschnitzel</label><br>
   <label><input type="checkbox" id="chkSaegespaene" checked> Sägespäne</label><br>
-  <label><input type="checkbox" id="chkSiebmaterial" checked> Siebmaterial</label>
+  <label><input type="checkbox" id="chkSiebmaterial" checked> Siebmaterial</label><br>
+  <!-- NEU -->
+  <label><input type="checkbox" id="chkPelletabrieb" checked> Pelletabrieb</label>
 </div>
 
 <div class="legend" id="legendSaegerestholz">
@@ -462,7 +464,7 @@ document.addEventListener("change", (e) => {
 });
 
 /* =========================================================
-   UNIT: SÄGERESTHOLZ  (LAT/LON eingebaut)
+   UNIT: SÄGERESTHOLZ  (LAT/LON eingebaut) + PELLETABRIEB NEU
 ========================================================= */
 
 function createSaegerestholzUnit(){
@@ -498,11 +500,21 @@ function createSaegerestholzUnit(){
     return (((ek * SIEB_TONNE) + (SIEB_KM_SATZ * km)) / SIEB_ATRO) * MARGE;
   }
 
+  // ===== NEU: Pelletabrieb Streckenberechnung EXACT wie Pellets-Unit =====
+  function calcPelletabrieb(ek, km){
+    if (!(isFinite(ek) && ek > 0)) return null;
+    const preisProKm = km < 250 ? 2.15 : 1.85;
+    const teilstrecke = km / 24;
+    const berechnung = teilstrecke * preisProKm;
+    return (berechnung + ek) * 1.05;
+  }
+
   function normProduktName(p){
     const s = (p || "").toLowerCase();
     if (s.includes("hackschnitzel")) return "hackschnitzel";
     if (s.includes("sägespäne") || s.includes("saegespaene") || s.includes("sägespaene") || s.includes("saegespäne")) return "saegespaene";
     if (s.includes("siebmaterial")) return "siebmaterial";
+    if (s.includes("pelletabrieb") || s.includes("pellet abrieb") || s.includes("abrieb")) return "pelletabrieb";
     return "";
   }
 
@@ -548,6 +560,18 @@ function createSaegerestholzUnit(){
 
         if (prodNorm && isFinite(priceVal) && priceVal > 0) prices[prodNorm] = priceVal;
         else if (prodNorm && !(prodNorm in prices)) prices[prodNorm] = 0;
+      }
+
+      // ===== NEU: Pelletabrieb aus Spalte K (Index 10) + Preis Spalte L (Index 11) =====
+      // K = "hat Produkt" (irgendwas eingetragen), L = Preis
+      const keyK = keys[10];
+      const keyL = keys[11];
+      const kVal = (keyK ? (x?.[keyK] ?? "") : "").toString().trim();
+      const lVal = parseFloatSmart(keyL ? (x?.[keyL] ?? "") : "");
+
+      if (kVal) {
+        if (isFinite(lVal) && lVal > 0) prices.pelletabrieb = lVal;
+        else if (!("pelletabrieb" in prices)) prices.pelletabrieb = 0;
       }
 
       const { lat, lon } = extractLatLonFromRow(x, keys);
@@ -610,12 +634,14 @@ function createSaegerestholzUnit(){
     const pH = m.prices?.hackschnitzel;
     const pS = m.prices?.saegespaene;
     const pM = m.prices?.siebmaterial;
+    const pA = m.prices?.pelletabrieb;
 
     const lineH = (pH !== undefined) ? `<b>Hackschnitzel:</b> ${isFinite(pH) && pH>0 ? pH.toFixed(2)+" €" : "–"}` : "";
     const lineS = (pS !== undefined) ? `<b>Sägespäne:</b> ${isFinite(pS) && pS>0 ? pS.toFixed(2)+" €" : "–"}` : "";
     const lineM = (pM !== undefined) ? `<b>Siebmaterial:</b> ${isFinite(pM) && pM>0 ? pM.toFixed(2)+" €" : "–"}` : "";
+    const lineA = (pA !== undefined) ? `<b>Pelletabrieb:</b> ${isFinite(pA) && pA>0 ? pA.toFixed(2)+" €" : "–"}` : "";
 
-    const lines = [lineH,lineS,lineM].filter(Boolean).join("<br>");
+    const lines = [lineH,lineS,lineM,lineA].filter(Boolean).join("<br>");
     return `<b>${m.firma}</b><br>${place}${landInfo}${lines ? "<br>"+lines : ""}`;
   }
 
@@ -623,15 +649,18 @@ function createSaegerestholzUnit(){
     const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
     const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
     const showSieb  = document.getElementById("chkSiebmaterial")?.checked ?? true;
+    const showAbr   = document.getElementById("chkPelletabrieb")?.checked ?? true;
 
     const pH = w.prices?.hackschnitzel;
     const pS = w.prices?.saegespaene;
     const pM = w.prices?.siebmaterial;
+    const pA = w.prices?.pelletabrieb;
 
     const list = [];
     if (showHacks && isFinite(pH) && pH > 0) list.push(pH);
     if (showSaeg  && isFinite(pS) && pS > 0) list.push(pS);
     if (showSieb  && isFinite(pM) && pM > 0) list.push(pM);
+    if (showAbr   && isFinite(pA) && pA > 0) list.push(pA);
 
     if (!list.length) return { price: 0, keinPreis: true };
     return { price: Math.min(...list), keinPreis: false };
@@ -649,7 +678,6 @@ function createSaegerestholzUnit(){
     // 2) fallback Geocode (wenn mal leer)
     const c = await geocodeWithFallback(buildQueries(row));
     if (!c) return null;
-    // wenn wir aus Land schon cc haben, nimm Land-cc; sonst vom Geocode
     return {
       lat: c.lat,
       lon: c.lon,
@@ -754,6 +782,7 @@ function createSaegerestholzUnit(){
       const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
       const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
       const showSieb  = document.getElementById("chkSiebmaterial")?.checked ?? true;
+      const showAbr   = document.getElementById("chkPelletabrieb")?.checked ?? true;
 
       for(const m of unit.alleMarker){
         if(m.type === "kunde"){
@@ -766,10 +795,11 @@ function createSaegerestholzUnit(){
         const hasH = m.prices?.hackschnitzel !== undefined;
         const hasS = m.prices?.saegespaene !== undefined;
         const hasM = m.prices?.siebmaterial !== undefined;
+        const hasA = m.prices?.pelletabrieb !== undefined;
 
-        if (!showHacks && !showSaeg && !showSieb) continue;
-        if ((showHacks || showSaeg || showSieb) && !(
-          (showHacks && hasH) || (showSaeg && hasS) || (showSieb && hasM)
+        if (!showHacks && !showSaeg && !showSieb && !showAbr) continue;
+        if ((showHacks || showSaeg || showSieb || showAbr) && !(
+          (showHacks && hasH) || (showSaeg && hasS) || (showSieb && hasM) || (showAbr && hasA)
         )) continue;
 
         const z = (m.zert || "").toLowerCase().trim();
@@ -839,10 +869,19 @@ function createSaegerestholzUnit(){
       const preisH = firmeneintrag?.prices?.hackschnitzel;
       const preisS = firmeneintrag?.prices?.saegespaene;
       const preisM = firmeneintrag?.prices?.siebmaterial;
+      const preisA = firmeneintrag?.prices?.pelletabrieb;
 
-      const totalH = (preisH !== undefined && isFinite(preisH) && preisH > 0) ? calcHackschnitzel(preisH, distKm) : null;
-      const totalS = (preisS !== undefined && isFinite(preisS) && preisS > 0) ? calcSaegespaene(preisS, distKm) : null;
-      const totalM = (preisM !== undefined && isFinite(preisM) && preisM > 0) ? calcSiebmaterial(preisM, distKm) : null;
+      const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
+      const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
+      const showSieb  = document.getElementById("chkSiebmaterial")?.checked ?? true;
+      const showAbr   = document.getElementById("chkPelletabrieb")?.checked ?? true;
+
+      const totalH = (showHacks && preisH !== undefined && isFinite(preisH) && preisH > 0) ? calcHackschnitzel(preisH, distKm) : null;
+      const totalS = (showSaeg  && preisS !== undefined && isFinite(preisS) && preisS > 0) ? calcSaegespaene(preisS, distKm) : null;
+      const totalM = (showSieb  && preisM !== undefined && isFinite(preisM) && preisM > 0) ? calcSiebmaterial(preisM, distKm) : null;
+
+      // NEU: Pelletabrieb total (Pellets-Formel)
+      const totalA = (showAbr && preisA !== undefined && isFinite(preisA) && preisA > 0) ? calcPelletabrieb(preisA, distKm) : null;
 
       if(unit.routeLine) map.removeLayer(unit.routeLine);
       unit.routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
@@ -851,13 +890,16 @@ function createSaegerestholzUnit(){
       const lineH = `<b>Hackschnitzel:</b> ${totalH !== null ? `<span style="color:green;font-size:1.05em">${totalH.toFixed(2)} €</span>` : "–"}`;
       const lineS = `<b>Sägespäne:</b> ${totalS !== null ? `<span style="color:green;font-size:1.05em">${totalS.toFixed(2)} €</span>` : "–"}`;
       const lineM = `<b>Siebmaterial:</b> ${totalM !== null ? `<span style="color:green;font-size:1.05em">${totalM.toFixed(2)} €</span>` : "–"}`;
+      const lineA = `<b>Pelletabrieb:</b> ${totalA !== null ? `<span style="color:green;font-size:1.05em">${totalA.toFixed(2)} €</span>` : "–"}`;
 
       const popupHtml = `
         <b>Route:</b> ${a.label} ↔ ${b.label}<br>
         <b>Entfernung:</b> ${distTxt} km<br>
         <b>Dauer:</b> ${durationStr}<br>
         <hr style="border:none;height:1px;background:#eee;margin:8px 0;">
-        ${firmeneintrag ? `${lineH}<br>${lineS}<br>${lineM}` : `<b>Hinweis:</b> Keine Firma ausgewählt – keine Werkpreise verfügbar.`}
+        ${firmeneintrag
+          ? `${lineH}<br>${lineS}<br>${lineM}<br>${lineA}`
+          : `<b>Hinweis:</b> Keine Firma ausgewählt – keine Werkpreise verfügbar.`}
       `;
 
       L.popup().setLatLng(mid).setContent(popupHtml).openOn(map);
@@ -899,7 +941,7 @@ function createSaegerestholzUnit(){
 }
 
 /* =========================================================
-   UNIT: PELLETS (LAT/LON eingebaut)
+   UNIT: PELLETS (unverändert)
 ========================================================= */
 
 function createPelletsUnit(){
@@ -1016,7 +1058,6 @@ function createPelletsUnit(){
     if (isFinite(row.lat) && isFinite(row.lon)) {
       return { lat: row.lat, lon: row.lon, country_code: row.country_code || "" };
     }
-    // fallback (wenn mal leer)
     const c = await geocodeOnce(row.ort || row.name || "");
     if (!c) return null;
     return { lat: c.lat, lon: c.lon, country_code: row.country_code || c.country_code || "" };
@@ -1271,7 +1312,6 @@ function createPelletsUnit(){
         return;
       }
 
-      // wenn nicht gefunden: normaler Geocode (Ort suchen)
       const c = await geocodeOnce(query);
       if(!c){ alert("Kein Treffer gefunden."); return; }
 
