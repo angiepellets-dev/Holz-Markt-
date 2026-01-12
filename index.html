@@ -190,11 +190,17 @@ function countryCodeFromLand(landRaw){
   return "";
 }
 
-// ---- LAT/LON aus Spalte R/S (Index 17/18) oder Header (lat/lon) ----
+// ---- Zahl robust parsen (auch "58,24 €") ----
 function parseFloatSmart(v){
-  const n = parseFloat(String(v ?? "").replace(",", ".").trim());
+  const s = String(v ?? "")
+    .replace(/\s/g, "")
+    .replace("€","")
+    .replace(/[^0-9,.\-]/g, "")
+    .replace(",", ".");
+  const n = parseFloat(s);
   return isFinite(n) ? n : NaN;
 }
+
 function pickKey(keys, candidates){
   const lc = (x)=>String(x||"").toLowerCase().trim();
   const set = new Set(candidates.map(c=>c.toLowerCase()));
@@ -460,11 +466,6 @@ document.addEventListener("change", (e) => {
 
 /* =========================================================
    UNIT: SÄGERESTHOLZ (inkl. Pelletabrieb)
-   - Pelletabrieb EK aus preis_4 (Spalte L)
-   - Pelletabrieb Preisformel wie Pellets:
-       (EK + (km * kmSatz / 24)) * 1.05
-   - Pelletabrieb Marge bleibt Excel:
-       Zielpreis - (EK + (km * kmSatz / 24))
 ========================================================= */
 
 function createSaegerestholzUnit(){
@@ -485,7 +486,7 @@ function createSaegerestholzUnit(){
   const SIEB_KM_SATZ = 1.85;
   const SIEB_ATRO = 11.8;
 
-  // Pelletabrieb (wie Pellets)
+  // Pelletabrieb wie Pellets
   const ABR_TEILER = 24;
   function abrKmSatz(km){ return (km < 250) ? 2.15 : 1.85; }
 
@@ -504,14 +505,14 @@ function createSaegerestholzUnit(){
     return (((ek * SIEB_TONNE) + (SIEB_KM_SATZ * km)) / SIEB_ATRO) * MARGE;
   }
 
-  // Pelletabrieb: Preis wie Pellets
+  // Pelletabrieb Preis: (EK + (km*kmSatz/24)) * 1.05
   function calcPelletabriebPreis(ek, km){
     if (!(isFinite(ek) && ek > 0)) return null;
     const kmSatz = abrKmSatz(km);
     return (ek + ((km * kmSatz) / ABR_TEILER)) * 1.05;
   }
 
-  // Pelletabrieb: Marge wie Excel: Ziel - (EK + (km*kmSatz/24))
+  // Pelletabrieb Marge: Ziel - (EK + (km*kmSatz/24))
   function calcPelletabriebMarge(zielpreis, ek, km){
     if (!(isFinite(zielpreis) && isFinite(ek) && isFinite(km))) return null;
     const kmSatz = abrKmSatz(km);
@@ -558,12 +559,11 @@ function createSaegerestholzUnit(){
       const prices = {};
       const pairs = Math.max(produktKeys.length, preisKeys.length);
 
-      // normale Produkte über Produkt/Preis-Spalten
       for (let i=0; i<pairs; i++){
         const pKey = produktKeys[i];
         const rKey = preisKeys[i];
 
-        const prodRaw = pKey ? (x?.[pKey] || "").toString().trim() : "";
+        const prodRaw  = pKey ? (x?.[pKey] || "").toString().trim() : "";
         const priceRaw = rKey ? (x?.[rKey] ?? "").toString() : "";
 
         const prodNorm = normProduktName(prodRaw);
@@ -573,12 +573,9 @@ function createSaegerestholzUnit(){
         else if (prodNorm && !(prodNorm in prices)) prices[prodNorm] = 0;
       }
 
-      // Pelletabrieb EK aus preis_4 (Spalte L)
-      const preis4Key =
-        keys.find(k => String(k||"").toLowerCase().replace(/\s+/g,'').includes("preis_4")) ||
-        keys[11]; // fallback: Spalte L
-
-      const abrEk = parseFloatSmart(preis4Key ? (x?.[preis4Key] ?? "") : "");
+      // ✅ Pelletabrieb EK KNALLHART aus Spalte L (Index 11)
+      const preis4Key = keys[11]; // L
+      const abrEk = parseFloatSmart(x?.[preis4Key] ?? "");
       if (isFinite(abrEk) && abrEk > 0) prices.pelletabrieb = abrEk;
       else if (!("pelletabrieb" in prices)) prices.pelletabrieb = 0;
 
@@ -600,7 +597,6 @@ function createSaegerestholzUnit(){
     }).filter(w => w.firma && (w.plz || w.ort));
   }
 
-  // Kunden: Spalte E = Produkt, Spalte F = Zielpreis
   function parseKunden(rows){
     const lc = (s)=>String(s||"").toLowerCase().trim();
     const keys = Object.keys(rows[0]||{});
@@ -611,6 +607,7 @@ function createSaegerestholzUnit(){
     const ortKey   = findKey(["ort","stadt","location","adresse","standort"]) || "ort";
     const landKey  = findKey(["land","country"]) || "land";
 
+    // ✅ Spalte E/F: Produkt / Zielpreis
     const prodKey = keys[4]; // E
     const zielKey = keys[5]; // F
 
@@ -629,7 +626,6 @@ function createSaegerestholzUnit(){
         land,
         country_code: countryCodeFromLand(land),
         lat, lon,
-
         produktRaw: prodRaw,
         produktNorm: prodNorm,
         zielpreis: isFinite(zielpreis) ? zielpreis : NaN
@@ -718,7 +714,6 @@ function createSaegerestholzUnit(){
       unit.alleMarker = [];
       const bounds = L.latLngBounds();
 
-      // Werke
       const firmGeo = await Promise.all(unit.werke.map(async (w)=>({ w, c: await coordForRow(w) })));
       for (const item of firmGeo){
         if(!item.c) continue;
@@ -754,7 +749,6 @@ function createSaegerestholzUnit(){
         bounds.extend([c.lat,c.lon]);
       }
 
-      // Kunden
       const kundGeo = await Promise.all(unit.kunden.map(async (k)=>({ k, c: await coordForRow(k) })));
       for (const item of kundGeo){
         if(!item.c) continue;
@@ -762,7 +756,7 @@ function createSaegerestholzUnit(){
 
         const place = `${k.plz ? k.plz+" " : ""}${k.ort || ""}`.trim();
 
-        // Zielpreis nur anzeigen, wenn Produkt wirklich Pelletabrieb ist + Zielpreis vorhanden
+        // ✅ Zielpreis nur anzeigen, wenn Produkt wirklich Pelletabrieb ist + Zielpreis vorhanden
         const hatAbrieb = (k.produktNorm === "pelletabrieb") && isFinite(k.zielpreis);
         const zielHtml = hatAbrieb ? `<br><b>Zielpreis:</b> ${k.zielpreis.toFixed(2)} €` : "";
 
@@ -884,12 +878,10 @@ function createSaegerestholzUnit(){
 
       const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
 
-      // Firma (für EKs)
       const firmaObjA = unit.alleMarker.find(m => m.type==="firma" && m.firma === a.label);
       const firmaObjB = unit.alleMarker.find(m => m.type==="firma" && m.firma === b.label);
       const firmeneintrag = firmaObjA || firmaObjB;
 
-      // Kunde (für Zielpreis bei Pelletabrieb)
       const kundeObjA = unit.alleMarker.find(m => m.type==="kunde" && m.name === a.label);
       const kundeObjB = unit.alleMarker.find(m => m.type==="kunde" && m.name === b.label);
       const kundeneintrag = kundeObjA || kundeObjB;
@@ -897,7 +889,7 @@ function createSaegerestholzUnit(){
       const preisH = firmeneintrag?.prices?.hackschnitzel;
       const preisS = firmeneintrag?.prices?.saegespaene;
       const preisM = firmeneintrag?.prices?.siebmaterial;
-      const ekAbr  = firmeneintrag?.prices?.pelletabrieb; // EK aus preis_4
+      const ekAbr  = firmeneintrag?.prices?.pelletabrieb;
 
       const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
       const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
@@ -908,10 +900,8 @@ function createSaegerestholzUnit(){
       const totalS = (showSaeg  && isFinite(preisS) && preisS > 0) ? calcSaegespaene(preisS, distKm) : null;
       const totalM = (showSieb  && isFinite(preisM) && preisM > 0) ? calcSiebmaterial(preisM, distKm) : null;
 
-      // Pelletabrieb Preis (wie Pellets)
       const totalAbr = (showAbr && isFinite(ekAbr) && ekAbr > 0) ? calcPelletabriebPreis(ekAbr, distKm) : null;
 
-      // Pelletabrieb Marge (Excel), nur wenn ein Kunde mit Produkt=Pelletabrieb + Zielpreis beteiligt ist
       let margeAbr = null;
       if (
         showAbr &&
@@ -994,7 +984,7 @@ function createSaegerestholzUnit(){
 }
 
 /* =========================================================
-   UNIT: PELLETS (dein Original)
+   UNIT: PELLETS (Original)
 ========================================================= */
 
 function createPelletsUnit(){
