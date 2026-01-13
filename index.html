@@ -463,8 +463,7 @@ document.addEventListener("change", (e) => {
 });
 
 /* =========================================================
-   UNIT: SÄGERESTHOLZ + Pelletabrieb (EK aus preis_4 / Spalte L)
-   Kunden Tooltip Zielpreis nur wenn Produkt=Pelletabrieb (Spalte E/F)
+   UNIT: SÄGERESTHOLZ  + Pelletabrieb + Marge aus Kunden E/F
 ========================================================= */
 
 function createSaegerestholzUnit(){
@@ -485,8 +484,8 @@ function createSaegerestholzUnit(){
   const SIEB_KM_SATZ = 1.85;
   const SIEB_ATRO = 11.8;
 
-  // Pelletabrieb Logik (wie Pellets): kmSatz abhängig, Teiler 24, *1.05
-  const ABR_TONNE = 24;
+  // Pelletabrieb (wie deine Pellets-Logik)
+  const ABR_TONNE = 24; // wichtig für die Margenformel (wie in deinem Sheet)
   function abrKmSatz(km){ return (km < 250) ? 2.15 : 1.85; }
 
   function calcHackschnitzel(ek, km){
@@ -504,12 +503,12 @@ function createSaegerestholzUnit(){
     return (((ek * SIEB_TONNE) + (SIEB_KM_SATZ * km)) / SIEB_ATRO) * MARGE;
   }
 
-  // Pelletabrieb Gesamtpreis (wie Pellets)
+  // Pelletabrieb Gesamtpreis (wie Pellets):
   function calcPelletabriebGesamt(ek, km){
     if (!(isFinite(ek) && ek > 0)) return null;
     const kmSatz = abrKmSatz(km);
     const basis = ek + ((km * kmSatz) / ABR_TONNE);
-    return basis * 1.05;
+    return basis * 1.05; // wie in deiner Pellets-Unit
   }
 
   // Pelletabrieb Marge (wie Sheet): Zielpreis - (EK + (km*kmSatz/24))
@@ -559,7 +558,6 @@ function createSaegerestholzUnit(){
       const prices = {};
       const pairs = Math.max(produktKeys.length, preisKeys.length);
 
-      // normale Produkte über Produkt/Preis-Spalten
       for (let i=0; i<pairs; i++){
         const pKey = produktKeys[i];
         const rKey = preisKeys[i];
@@ -574,14 +572,16 @@ function createSaegerestholzUnit(){
         else if (prodNorm && !(prodNorm in prices)) prices[prodNorm] = 0;
       }
 
-      // Pelletabrieb EK aus preis_4 (Spalte L)
-      const preis4Key =
-        keys.find(k => String(k||"").toLowerCase().replace(/\s+/g,'').includes("preis_4")) ||
-        keys[11]; // fallback Spalte L
+      // Pelletabrieb aus Firmen Spalte K/L (Index 10/11)
+      const keyK = keys[10];
+      const keyL = keys[11];
+      const kVal = (keyK ? (x?.[keyK] ?? "") : "").toString().trim();
+      const lVal = parseFloatSmart(keyL ? (x?.[keyL] ?? "") : "");
 
-      const abrEk = parseFloatSmart(preis4Key ? (x?.[preis4Key] ?? "") : "");
-      if (isFinite(abrEk) && abrEk > 0) prices.pelletabrieb = abrEk;
-      else if (!("pelletabrieb" in prices)) prices.pelletabrieb = 0;
+      if (kVal) {
+        if (isFinite(lVal) && lVal > 0) prices.pelletabrieb = lVal;
+        else if (!("pelletabrieb" in prices)) prices.pelletabrieb = 0;
+      }
 
       const { lat, lon } = extractLatLonFromRow(x, keys);
 
@@ -690,11 +690,19 @@ function createSaegerestholzUnit(){
 
   async function coordForRow(row){
     if (isFinite(row.lat) && isFinite(row.lon)) {
-      return { lat: row.lat, lon: row.lon, country_code: row.country_code || "" };
+      return {
+        lat: row.lat,
+        lon: row.lon,
+        country_code: row.country_code || ""
+      };
     }
     const c = await geocodeWithFallback(buildQueries(row));
     if (!c) return null;
-    return { lat: c.lat, lon: c.lon, country_code: row.country_code || c.country_code || "" };
+    return {
+      lat: c.lat,
+      lon: c.lon,
+      country_code: row.country_code || c.country_code || ""
+    };
   }
 
   const unit = {
@@ -760,15 +768,10 @@ function createSaegerestholzUnit(){
       for (const item of kundGeo){
         if(!item.c) continue;
         const { k, c } = item;
-
         const place = `${k.plz ? k.plz+" " : ""}${k.ort || ""}`.trim();
 
-        // Zielpreis nur anzeigen, wenn Produkt wirklich Pelletabrieb ist (Spalte E) + Zielpreis vorhanden
-        const hatAbrieb = (k.produktNorm === "pelletabrieb") && isFinite(k.zielpreis);
-        const zielHtml = hatAbrieb ? `<br><b>Zielpreis:</b> ${k.zielpreis.toFixed(2)} €` : "";
-
         const m = L.marker([c.lat,c.lon],{icon:blauesDreieck})
-          .bindTooltip(`<b>${k.name}</b><br>${place}${k.land ? "<br>" + k.land : ""}${zielHtml}`,{sticky:true})
+          .bindTooltip(`<b>${k.name}</b><br>${place}${k.land ? "<br>" + k.land : ""}`,{sticky:true})
           .on("click",()=>unit.handleMarkerClick(k.name,c));
 
         unit.alleMarker.push({
@@ -823,7 +826,9 @@ function createSaegerestholzUnit(){
         const hasA = m.prices?.pelletabrieb !== undefined;
 
         if (!showHacks && !showSaeg && !showSieb && !showAbr) continue;
-        if (!((showHacks && hasH) || (showSaeg && hasS) || (showSieb && hasM) || (showAbr && hasA))) continue;
+        if ((showHacks || showSaeg || showSieb || showAbr) && !(
+          (showHacks && hasH) || (showSaeg && hasS) || (showSieb && hasM) || (showAbr && hasA)
+        )) continue;
 
         const z = (m.zert || "").toLowerCase().trim();
         let zertOK = false;
@@ -903,11 +908,12 @@ function createSaegerestholzUnit(){
       const showSieb  = document.getElementById("chkSiebmaterial")?.checked ?? true;
       const showAbr   = document.getElementById("chkPelletabrieb")?.checked ?? true;
 
-      const totalH = (showHacks && isFinite(preisH) && preisH > 0) ? calcHackschnitzel(preisH, distKm) : null;
-      const totalS = (showSaeg  && isFinite(preisS) && preisS > 0) ? calcSaegespaene(preisS, distKm) : null;
-      const totalM = (showSieb  && isFinite(preisM) && preisM > 0) ? calcSiebmaterial(preisM, distKm) : null;
+      const totalH = (showHacks && preisH !== undefined && isFinite(preisH) && preisH > 0) ? calcHackschnitzel(preisH, distKm) : null;
+      const totalS = (showSaeg  && preisS !== undefined && isFinite(preisS) && preisS > 0) ? calcSaegespaene(preisS, distKm) : null;
+      const totalM = (showSieb  && preisM !== undefined && isFinite(preisM) && preisM > 0) ? calcSiebmaterial(preisM, distKm) : null;
 
-      const totalA = (showAbr && isFinite(preisA) && preisA > 0) ? calcPelletabriebGesamt(preisA, distKm) : null;
+      // Pelletabrieb Gesamt + Marge (aus Kunden Zielpreis)
+      const totalA = (showAbr && preisA !== undefined && isFinite(preisA) && preisA > 0) ? calcPelletabriebGesamt(preisA, distKm) : null;
 
       let margeA = null;
       if (
@@ -990,7 +996,7 @@ function createSaegerestholzUnit(){
 }
 
 /* =========================================================
-   UNIT: PELLETS (dein Original - unverändert)
+   UNIT: PELLETS (dein Code unverändert)
 ========================================================= */
 
 function createPelletsUnit(){
@@ -1311,105 +1317,65 @@ function createPelletsUnit(){
       const durationStr = hours>0?`${hours}h ${minutes}min`:`${minutes}min`;
 
       const coords = route.geometry.coordinates.map(c=>[c[1],c[0]]);
+      const useSack = sackFilterAktiv();
 
-      const firmaObjA = unit.alleMarker.find(m => m.type==="firma" && m.firma === a.label);
-      const firmaObjB = unit.alleMarker.find(m => m.type==="firma" && m.firma === b.label);
-      const firmeneintrag = firmaObjA || firmaObjB;
+      const firmeneintrag = unit.werke.find(w => w.firma === a.label || w.firma === b.label);
+      const firmenPreis = firmeneintrag ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis) : 0;
 
-      const kundeObjA = unit.alleMarker.find(m => m.type==="kunde" && m.name === a.label);
-      const kundeObjB = unit.alleMarker.find(m => m.type==="kunde" && m.name === b.label);
-      const kundeneintrag = kundeObjA || kundeObjB;
-
-      const preisH = firmeneintrag?.prices?.hackschnitzel;
-      const preisS = firmeneintrag?.prices?.saegespaene;
-      const preisM = firmeneintrag?.prices?.siebmaterial;
-      const preisA = firmeneintrag?.prices?.pelletabrieb;
-
-      const showHacks = document.getElementById("chkHackschnitzel")?.checked ?? true;
-      const showSaeg  = document.getElementById("chkSaegespaene")?.checked ?? true;
-      const showSieb  = document.getElementById("chkSiebmaterial")?.checked ?? true;
-      const showAbr   = document.getElementById("chkPelletabrieb")?.checked ?? true;
-
-      const totalH = (showHacks && isFinite(preisH) && preisH > 0) ? calcHackschnitzel(preisH, distKm) : null;
-      const totalS = (showSaeg  && isFinite(preisS) && preisS > 0) ? calcSaegespaene(preisS, distKm) : null;
-      const totalM = (showSieb  && isFinite(preisM) && preisM > 0) ? calcSiebmaterial(preisM, distKm) : null;
-
-      const totalA = (showAbr && isFinite(preisA) && preisA > 0) ? calcPelletabriebGesamt(preisA, distKm) : null;
-
-      let margeA = null;
-      if (
-        showAbr &&
-        totalA !== null &&
-        kundeneintrag &&
-        kundeneintrag.produktNorm === "pelletabrieb" &&
-        isFinite(kundeneintrag.zielpreis)
-      ){
-        margeA = calcPelletabriebMarge(kundeneintrag.zielpreis, preisA, distKm);
-      }
+      const preisProKm = distKm < 250 ? 2.15 : 1.85;
+      const teilstrecke = distKm / 24;
+      const berechnung = teilstrecke * preisProKm;
+      const gesamt = ((berechnung + (firmenPreis||0)) * 1.05);
 
       if(unit.routeLine) map.removeLayer(unit.routeLine);
       unit.routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
 
       const mid = coords[Math.floor(coords.length/2)];
-      const lineH = `<b>Hackschnitzel:</b> ${totalH !== null ? `<span style="color:green;font-size:1.05em">${totalH.toFixed(2)} €</span>` : "–"}`;
-      const lineS = `<b>Sägespäne:</b> ${totalS !== null ? `<span style="color:green;font-size:1.05em">${totalS.toFixed(2)} €</span>` : "–"}`;
-      const lineM = `<b>Siebmaterial:</b> ${totalM !== null ? `<span style="color:green;font-size:1.05em">${totalM.toFixed(2)} €</span>` : "–"}`;
-
-      const margeTxt = (margeA !== null && isFinite(margeA))
-        ? ` <span style="opacity:.75">(Marge: ${margeA.toFixed(2)} €)</span>`
-        : "";
-
-      const lineA = `<b>Pelletabrieb:</b> ${
-        totalA !== null
-          ? `<span style="color:green;font-size:1.05em">${totalA.toFixed(2)} €</span>${margeTxt}`
-          : "–"
-      }`;
-
-      const popupHtml = `
+      L.popup().setLatLng(mid).setContent(`
         <b>Route:</b> ${a.label} ↔ ${b.label}<br>
         <b>Entfernung:</b> ${distTxt} km<br>
         <b>Dauer:</b> ${durationStr}<br>
-        <hr style="border:none;height:1px;background:#eee;margin:8px 0;">
-        ${firmeneintrag
-          ? `${lineH}<br>${lineS}<br>${lineM}<br>${lineA}`
-          : `<b>Hinweis:</b> Keine Firma ausgewählt – keine Werkpreise verfügbar.`}
-      `;
+        <b>Preis pro km:</b> ${preisProKm.toFixed(2)} €<br>
+        <b>${useSack ? "Sackware-Preis" : "Werkspreis"}:</b> ${(firmenPreis||0).toFixed(2)} €<br>
+        <b>Gesamtkosten:</b> <span style="color:green;font-size:1.1em">${gesamt.toFixed(2)} €</span>
+      `).openOn(map);
 
-      L.popup().setLatLng(mid).setContent(popupHtml).openOn(map);
       map.fitBounds(unit.routeLine.getBounds(),{padding:[40,40]});
     },
 
     async searchOrGeocode(query){
       const q = query.toLowerCase().trim();
 
-      const hit = unit.alleMarker.find(m =>
-        m.marker && m.marker.getTooltip && m.marker.getTooltip().getContent &&
-        String(m.marker.getTooltip().getContent()).toLowerCase().includes(q)
-      );
+      const matches = unit.alleMarker.filter(m => {
+        const tooltipContent = (m.marker.getTooltip && m.marker.getTooltip().getContent)
+          ? String(m.marker.getTooltip().getContent()).toLowerCase()
+          : "";
+        const name = (m.firma || m.name || "").toLowerCase();
+        const ort  = (m.ort   || "").toLowerCase();
+        return tooltipContent.includes(q) || name.includes(q) || ort.includes(q);
+      });
 
-      if (hit) {
-        const latlng = hit.marker.getLatLng();
-        map.setView(latlng, 9);
-        if (hit.marker.openTooltip) hit.marker.openTooltip();
-        unit.handleMarkerClick(
-          hit.type==="firma" ? hit.firma : hit.name,
-          { lat: latlng.lat, lon: latlng.lng, country_code: hit.country_code || "" }
-        );
+      if (matches.length) {
+        const bounds = L.latLngBounds();
+        matches.forEach((m, idx) => {
+          const latlng = m.marker.getLatLng();
+          map.addLayer(m.marker);
+          bounds.extend(latlng);
+          if (idx === 0 && m.marker.openTooltip) m.marker.openTooltip();
+        });
+        if (bounds.isValid()) map.fitBounds(bounds.pad(0.2));
         return;
       }
 
-      const c = await geocodeWithFallback([query]);
+      const c = await geocodeOnce(query);
       if(!c){ alert("Kein Treffer gefunden."); return; }
 
-      if (unit.tempSearchMarker) map.removeLayer(unit.tempSearchMarker);
-      unit.tempSearchMarker = L.marker([c.lat, c.lon], { icon: ortIcon })
+      const marker = L.marker([c.lat, c.lon], { icon: ortIcon })
         .bindTooltip(`<b>Ort:</b> ${query}`, {sticky:true})
         .addTo(map);
+      marker.openTooltip();
 
-      map.setView([c.lat, c.lon], 10);
-      unit.tempSearchMarker.openTooltip();
-
-      unit.handleMarkerClick(`Ort: ${query}`, c);
+      unit.selectedPoints = [{ label: query, coord: { lat: c.lat, lon: c.lon } }];
     }
   };
 
@@ -1419,4 +1385,3 @@ function createPelletsUnit(){
 
 </body>
 </html>
-```
