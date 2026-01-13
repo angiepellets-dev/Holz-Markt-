@@ -1,3 +1,4 @@
+```html
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -486,7 +487,7 @@ function createSaegerestholzUnit(){
   const SIEB_KM_SATZ = 1.85;
   const SIEB_ATRO = 11.8;
 
-  // Pelletabrieb wie Pellets
+  // Pelletabrieb: kmSatz bleibt wie vorher (2.15/1.85), aber neue Struktur: (EK + ((km*kmSatz)/24)) * 1.05
   const ABR_TEILER = 24;
   function abrKmSatz(km){ return (km < 250) ? 2.15 : 1.85; }
 
@@ -505,14 +506,14 @@ function createSaegerestholzUnit(){
     return (((ek * SIEB_TONNE) + (SIEB_KM_SATZ * km)) / SIEB_ATRO) * MARGE;
   }
 
-  // Pelletabrieb Preis: (EK + (km*kmSatz/24)) * 1.05
+  // ✅ NEU: Pelletabrieb Preis = (EK + ((km*kmSatz)/24)) * 1.05
   function calcPelletabriebPreis(ek, km){
     if (!(isFinite(ek) && ek > 0)) return null;
     const kmSatz = abrKmSatz(km);
     return (ek + ((km * kmSatz) / ABR_TEILER)) * 1.05;
   }
 
-  // Pelletabrieb Marge: Ziel - (EK + (km*kmSatz/24))
+  // ✅ Marge bleibt: Ziel - Basis (ohne *1,05), aber Basis ist jetzt EK + ((km*kmSatz)/24)
   function calcPelletabriebMarge(zielpreis, ek, km){
     if (!(isFinite(zielpreis) && isFinite(ek) && isFinite(km))) return null;
     const kmSatz = abrKmSatz(km);
@@ -573,7 +574,7 @@ function createSaegerestholzUnit(){
         else if (prodNorm && !(prodNorm in prices)) prices[prodNorm] = 0;
       }
 
-      // ✅ Pelletabrieb EK KNALLHART aus Spalte L (Index 11)
+      // ✅ Pelletabrieb EK aus Spalte L (Index 11)
       const preis4Key = keys[11]; // L
       const abrEk = parseFloatSmart(x?.[preis4Key] ?? "");
       if (isFinite(abrEk) && abrEk > 0) prices.pelletabrieb = abrEk;
@@ -1310,10 +1311,11 @@ function createPelletsUnit(){
       const firmeneintrag = unit.werke.find(w => w.firma === a.label || w.firma === b.label);
       const firmenPreis = firmeneintrag ? (useSack ? firmeneintrag.preisSack : firmeneintrag.preis) : 0;
 
+      // ✅ km-Satz bleibt wie vorher (2.15/1.85), aber neue Struktur:
+      // gesamt = (EK + (km*preisProKm/24)) * 1.05
       const preisProKm = distKm < 250 ? 2.15 : 1.85;
-      const teilstrecke = distKm / 24;
-      const berechnung = teilstrecke * preisProKm;
-      const gesamt = ((berechnung + (firmenPreis||0)) * 1.05);
+      const berechnung = (distKm * preisProKm) / 24;
+      const gesamt = (((firmenPreis||0) + berechnung) * 1.05);
 
       if(unit.routeLine) map.removeLayer(unit.routeLine);
       unit.routeLine = L.polyline(coords,{color:'blue',weight:5,opacity:0.8}).addTo(map);
@@ -1373,3 +1375,4 @@ function createPelletsUnit(){
 
 </body>
 </html>
+```
