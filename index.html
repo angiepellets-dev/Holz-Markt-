@@ -516,7 +516,7 @@ function createSaegerestholzUnit(){
   function calcPelletabriebMarge(zielpreis, ek, km){
     if (!(isFinite(zielpreis) && isFinite(ek) && isFinite(km))) return null;
     const kmSatz = abrKmSatz(km);
-    const basis = ek + ((km * kmSatz) / ABR_TEILER);
+    const basis = (ek + ((km * kmSatz) / ABR_TEILER));
     return zielpreis - basis;
   }
 
