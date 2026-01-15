@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+ich meine setze es hier um mach das alte weg und das neue rein <!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="utf-8" />
@@ -57,30 +57,48 @@
     #panelSaegerestholz, #legendSaegerestholz,
     #panelPellets, #legendPellets { display:none; }
 
-    /* ===== Rechtsklick-Popup wie Screenshot ===== */
-    .leaflet-popup-content-wrapper{
+    /* ========= Rechtsklick-Menü ========= */
+    .ctx-menu{
+      position:absolute;
+      z-index:99999;
+      background:#fff;
+      border:1px solid #ddd;
       border-radius:10px;
-      box-shadow:0 10px 26px rgba(0,0,0,.18);
+      box-shadow:0 10px 30px rgba(0,0,0,.18);
+      min-width:220px;
+      overflow:hidden;
+      font:14px/1.25 system-ui, Arial, sans-serif;
+      user-select:none;
     }
-    .leaflet-popup-content{
-      margin:0;
-      width:300px;
-      font:14px system-ui, Arial, sans-serif;
+    .ctx-head{
+      padding:10px 12px;
+      border-bottom:1px solid #eee;
+      background:#fafafa;
     }
-    .rc-card{ padding:12px 14px; }
-    .rc-title{ font-weight:700; margin-bottom:2px; }
-    .rc-sub{ font-size:12px; opacity:.7; margin-bottom:10px; line-height:1.2; }
-    .rc-card select,
-    .rc-card input{
-      width:100%;
-      padding:7px 9px;
-      border:1px solid #cfcfcf;
-      border-radius:8px;
-      box-sizing:border-box;
-      font-size:14px;
-      outline:none;
+    .ctx-head b{display:block;margin-bottom:2px}
+    .ctx-head .mini{font-size:12px;opacity:.7}
+    .ctx-btn{
+      padding:10px 12px;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
     }
-    .rc-card input{ margin-top:8px; }
+    .ctx-btn:hover{background:#f4f4f4}
+    .ctx-btn[aria-disabled="true"]{
+      opacity:.45;
+      cursor:not-allowed;
+    }
+    .ctx-sep{height:1px;background:#eee;margin:4px 0}
+    .ctx-pill{
+      font-size:12px;
+      padding:2px 8px;
+      border:1px solid #ddd;
+      border-radius:999px;
+      opacity:.75;
+      white-space:nowrap;
+    }
   </style>
 </head>
 <body>
@@ -244,6 +262,7 @@ function extractLatLonFromRow(row, keys){
     }
   }
 
+  // validieren
   if (!(isFinite(lat) && isFinite(lon))) return { lat: NaN, lon: NaN };
   if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return { lat: NaN, lon: NaN };
 
@@ -384,16 +403,80 @@ document.addEventListener("change", (e) => {
 });
 
 /* =========================================================
-   NEU: Rechtsklick Popup (wie Screenshot)
-   - Unit-spezifisch (Pellets / Sägerestholz)
+   Rechtsklick-Menü (global, Unit-spezifische Actions)
 ========================================================= */
 
-const rcMemory = new Map(); // key -> { product, target }
+let ctxMenuEl = null;
+let ctxState = null; // { unit, mObj, coord, title, subtitle }
 
-function rcKey(unitName, id){
-  return `${unitName}::${id}`;
+function closeCtxMenu(){
+  if (ctxMenuEl && ctxMenuEl.parentNode) ctxMenuEl.parentNode.removeChild(ctxMenuEl);
+  ctxMenuEl = null;
+  ctxState = null;
+}
+function clamp(n, min, max){ return Math.max(min, Math.min(max, n)); }
+
+function showCtxMenu({unit, mObj, coord, title, subtitle, containerPoint}){
+  closeCtxMenu();
+  if (!unit) return;
+
+  const mapEl = map.getContainer();
+  const rect = mapEl.getBoundingClientRect();
+
+  ctxMenuEl = document.createElement("div");
+  ctxMenuEl.className = "ctx-menu";
+  ctxMenuEl.innerHTML = `
+    <div class="ctx-head">
+      <b>${escapeHtml(title || "Punkt")}</b>
+      <div class="mini">${escapeHtml(subtitle || "")}</div>
+    </div>
+    <div class="ctx-btn" data-act="setStart">✅ Als <b>Start</b> setzen <span class="ctx-pill">1</span></div>
+    <div class="ctx-btn" data-act="setEnd">🎯 Als <b>Ziel</b> setzen <span class="ctx-pill">2</span></div>
+    <div class="ctx-sep"></div>
+    <div class="ctx-btn" data-act="route">🧭 Route berechnen <span class="ctx-pill">Start+Ziel</span></div>
+    <div class="ctx-btn" data-act="clear">🧹 Route löschen <span class="ctx-pill">Reset</span></div>
+  `;
+
+  // NICHT wegklicken, wenn man im Menü klickt
+  ctxMenuEl.addEventListener("mousedown", (e)=>{ e.stopPropagation(); });
+  ctxMenuEl.addEventListener("click", (e)=>{ e.stopPropagation(); });
+
+  // Actions
+  ctxMenuEl.querySelectorAll(".ctx-btn").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const act = btn.getAttribute("data-act");
+      if (!act) return;
+
+      try{
+        if (act === "setStart") unit.setStartPoint({label:title, coord, meta:mObj});
+        if (act === "setEnd")   unit.setEndPoint({label:title, coord, meta:mObj});
+        if (act === "route")    await unit.tryRoute();
+        if (act === "clear")    unit.clearRouteAndPoints();
+      }catch(err){
+        console.error(err);
+        alert("Fehler bei Rechtsklick Aktion. Konsole (F12) anschauen.");
+      } finally {
+        // Menü danach schließen (so wie du es kennst)
+        closeCtxMenu();
+      }
+    });
+  });
+
+  mapEl.appendChild(ctxMenuEl);
+
+  // Positionieren (containerPoint ist im Map-Container)
+  const menuW = 240;
+  const menuH = 190;
+  const left = clamp(containerPoint.x + 10, 10, rect.width - menuW - 10);
+  const top  = clamp(containerPoint.y + 10, 10, rect.height - menuH - 10);
+
+  ctxMenuEl.style.left = left + "px";
+  ctxMenuEl.style.top  = top + "px";
+
+  ctxState = { unit, mObj, coord, title, subtitle };
 }
 
+// Escape für Menü-HTML
 function escapeHtml(str){
   return String(str ?? "")
     .replaceAll("&","&amp;")
@@ -403,53 +486,11 @@ function escapeHtml(str){
     .replaceAll("'","&#039;");
 }
 
-function openRightClickPopup(unitName, id, title, subtitle, latlng){
-  const key = rcKey(unitName, id);
-  const saved = rcMemory.get(key) || {};
-
-  let optionsHtml = "";
-  if (unitName === "pellets") {
-    const opts = ["Pellets lose", "Sackware 15 kg", "FireFlies"];
-    optionsHtml = opts.map(o => `<option ${saved.product===o?"selected":""}>${o}</option>`).join("");
-  } else {
-    const opts = ["Hackschnitzel", "Sägespäne", "Siebmaterial"];
-    optionsHtml = opts.map(o => `<option ${saved.product===o?"selected":""}>${o}</option>`).join("");
-  }
-
-  const html = `
-    <div class="rc-card">
-      <div class="rc-title">${escapeHtml(title)}</div>
-      <div class="rc-sub">${escapeHtml(subtitle || "")}</div>
-
-      <select id="rc_sel">${optionsHtml}</select>
-      <input id="rc_target" type="number" step="0.01" placeholder="Zielpreis (€) eingeben..." value="${saved.target ?? ""}">
-    </div>
-  `;
-
-  const popup = L.popup({ closeButton:true, autoPan:true, closeOnClick:false })
-    .setLatLng(latlng)
-    .setContent(html)
-    .openOn(map);
-
-  // Nach dem Rendern: Events dranhängen (kurzer Timeout, damit DOM existiert)
-  setTimeout(()=>{
-    const root = popup.getElement();
-    if (!root) return;
-
-    const sel = root.querySelector("#rc_sel");
-    const inp = root.querySelector("#rc_target");
-
-    const store = ()=>{
-      rcMemory.set(key, {
-        product: sel ? sel.value : saved.product,
-        target: inp && inp.value !== "" ? parseFloat(inp.value) : ""
-      });
-    };
-
-    if (sel) sel.addEventListener("change", store);
-    if (inp) inp.addEventListener("input", store);
-  }, 0);
-}
+// Menü schließen: Klick irgendwo auf Karte, ESC, move/zoom, etc.
+map.on("click", ()=> closeCtxMenu());
+map.on("movestart", ()=> closeCtxMenu());
+map.on("zoomstart", ()=> closeCtxMenu());
+document.addEventListener("keydown", (e)=>{ if(e.key==="Escape") closeCtxMenu(); });
 
 /* =========================================================
    UNIT MANAGER
@@ -481,6 +522,7 @@ function clearMapState(unit){
   if (unit.searchResultMarker && map.hasLayer(unit.searchResultMarker)) map.removeLayer(unit.searchResultMarker);
   unit.searchResultMarker = null;
 
+  closeCtxMenu();
   map.closePopup();
 }
 
@@ -499,14 +541,14 @@ document.getElementById("unitSelect").addEventListener("change", async (e) => {
   }
 
   if (v === "saegerestholz") {
-    hint.textContent = "Sägerestholz aktiv. 2 Punkte klicken → Route + Preis. Rechtsklick → Popup.";
+    hint.textContent = "Sägerestholz aktiv. Rechtsklick: Start/Ziel. Oder 2x normal klicken.";
     document.getElementById("panelSaegerestholz").style.display = "block";
     document.getElementById("legendSaegerestholz").style.display = "block";
     currentUnit = createSaegerestholzUnit();
   }
 
   if (v === "pellets") {
-    hint.textContent = "Pellets aktiv. 2 Punkte klicken → Route + Preis. Rechtsklick → Popup.";
+    hint.textContent = "Pellets aktiv. Rechtsklick: Start/Ziel. Oder 2x normal klicken.";
     document.getElementById("panelPellets").style.display = "block";
     document.getElementById("legendPellets").style.display = "block";
     currentUnit = createPelletsUnit();
@@ -537,16 +579,17 @@ document.getElementById("searchInput").addEventListener("keydown", async (e) => 
   }
 });
 
-// Klick neben Route => Route weg + Auswahl reset (wie du wolltest)
+// Klick neben Route => Route weg (wie du wolltest) + Auswahl reset
 map.on('click', (e) => {
   const t = e.originalEvent && e.originalEvent.target;
   if (t && t.closest) {
     if (t.closest('.leaflet-marker-icon') ||
         t.closest('.leaflet-popup') ||
-        t.closest('.leaflet-interactive')) return;
+        t.closest('.leaflet-interactive') ||
+        t.closest('.ctx-menu')) return;
   }
   if (currentUnit) {
-    if (currentUnit.clearRouteAndPoints) currentUnit.clearRouteAndPoints();
+    currentUnit.clearRouteAndPoints();
     map.closePopup();
   }
 });
@@ -559,7 +602,7 @@ document.addEventListener("change", (e) => {
 });
 
 /* =========================================================
-   UNIT: SÄGERESTHOLZ
+   UNIT: SÄGERESTHOLZ  (LAT/LON eingebaut)
 ========================================================= */
 
 function createSaegerestholzUnit(){
@@ -747,9 +790,29 @@ function createSaegerestholzUnit(){
     werke: [],
     kunden: [],
     alleMarker: [],
-    selectedPoints: [],
     routeLine: null,
     tempSearchMarker: null,
+
+    // NEU (für Rechtsklick)
+    startPoint: null,
+    endPoint: null,
+
+    clearRouteAndPoints(){
+      if (unit.routeLine && map.hasLayer(unit.routeLine)) map.removeLayer(unit.routeLine);
+      unit.routeLine = null;
+      unit.startPoint = null;
+      unit.endPoint = null;
+      closeCtxMenu();
+    },
+    setStartPoint(p){ unit.startPoint = p; },
+    setEndPoint(p){ unit.endPoint = p; },
+    async tryRoute(){
+      if (!unit.startPoint || !unit.endPoint) {
+        alert("Bitte Start UND Ziel setzen.");
+        return;
+      }
+      await unit.showRoute(unit.startPoint, unit.endPoint);
+    },
 
     async init(){
       const [firmenRows, kundenRows] = await Promise.all([
@@ -761,16 +824,11 @@ function createSaegerestholzUnit(){
       await unit.buildMap();
     },
 
-    clearRouteAndPoints(){
-      if (unit.routeLine && map.hasLayer(unit.routeLine)) map.removeLayer(unit.routeLine);
-      unit.routeLine = null;
-      unit.selectedPoints = [];
-    },
-
     async buildMap(){
       unit.alleMarker = [];
       const bounds = L.latLngBounds();
 
+      // Werke
       const firmGeo = await Promise.all(unit.werke.map(async (w)=>({ w, c: await coordForRow(w) })));
       for (const item of firmGeo){
         if(!item.c) continue;
@@ -800,21 +858,26 @@ function createSaegerestholzUnit(){
 
         circle.bindTooltip("", {sticky:true})
           .on("tooltipopen", ()=> circle.getTooltip().setContent(tooltipHtmlFirma(markerObj)))
-          .on("click",()=>unit.handleMarkerClick(markerObj.firma,c))
+          // normaler Klick: Start/Ziel "schnell" wie vorher
+          .on("click",()=>unit.handleNormalClick(markerObj.firma,c))
+          // Rechtsklick-Menü
           .on("contextmenu",(ev)=>{
-            openRightClickPopup(
-              "saegerestholz",
-              "firma:"+markerObj.firma,
-              markerObj.firma,
-              `${(markerObj.plz? markerObj.plz+" ":"")}${markerObj.ort || ""}${markerObj.land ? ", "+markerObj.land : ""}`,
-              ev.latlng
-            );
+            const p = map.latLngToContainerPoint(ev.latlng);
+            showCtxMenu({
+              unit,
+              mObj: markerObj,
+              coord: {lat:c.lat, lon:c.lon, country_code:(c.country_code||"")},
+              title: markerObj.firma,
+              subtitle: `${(w.plz? w.plz+" ":"")}${w.ort||""}${w.land? " · "+w.land:""}`,
+              containerPoint: p
+            });
           });
 
         unit.alleMarker.push(markerObj);
         bounds.extend([c.lat,c.lon]);
       }
 
+      // Kunden
       const kundGeo = await Promise.all(unit.kunden.map(async (k)=>({ k, c: await coordForRow(k) })));
       for (const item of kundGeo){
         if(!item.c) continue;
@@ -823,15 +886,17 @@ function createSaegerestholzUnit(){
 
         const m = L.marker([c.lat,c.lon],{icon:blauesDreieck})
           .bindTooltip(`<b>${k.name}</b><br>${place}${k.land ? "<br>" + k.land : ""}`,{sticky:true})
-          .on("click",()=>unit.handleMarkerClick(k.name,c))
+          .on("click",()=>unit.handleNormalClick(k.name,c))
           .on("contextmenu",(ev)=>{
-            openRightClickPopup(
-              "saegerestholz",
-              "kunde:"+k.name,
-              k.name,
-              `${place}${k.land ? ", "+k.land : ""}`,
-              ev.latlng
-            );
+            const p = map.latLngToContainerPoint(ev.latlng);
+            showCtxMenu({
+              unit,
+              mObj: {type:"kunde", name:k.name, ort:k.ort, land:k.land, country_code:(c.country_code||"")},
+              coord: {lat:c.lat, lon:c.lon, country_code:(c.country_code||"")},
+              title: k.name,
+              subtitle: `${place}${k.land? " · "+k.land:""}`,
+              containerPoint: p
+            });
           });
 
         unit.alleMarker.push({ type:"kunde", marker:m, country_code:(c.country_code||"") });
@@ -911,13 +976,20 @@ function createSaegerestholzUnit(){
       }
     },
 
-    handleMarkerClick(label,coord){
-      unit.selectedPoints.push({label,coord});
-      if(unit.selectedPoints.length===2){
-        const [a,b]=unit.selectedPoints;
-        unit.showRoute(a,b);
-        unit.selectedPoints=[];
+    // normaler Klick: wenn Start fehlt => Start, sonst Ziel => Route
+    handleNormalClick(label,coord){
+      if (!unit.startPoint) {
+        unit.setStartPoint({label, coord});
+        return;
       }
+      if (!unit.endPoint) {
+        unit.setEndPoint({label, coord});
+        unit.tryRoute();
+        return;
+      }
+      // wenn beide schon gesetzt: neu beginnen
+      unit.setStartPoint({label, coord});
+      unit.endPoint = null;
     },
 
     async showRoute(a,b){
@@ -975,6 +1047,7 @@ function createSaegerestholzUnit(){
     async searchOrGeocode(query){
       const q = query.toLowerCase().trim();
 
+      // BESSER: suche direkt in Datenfeldern statt Tooltip-HTML
       const hit = unit.alleMarker.find(m => {
         const name = (m.firma || m.name || "").toLowerCase();
         const ort  = (m.ort || "").toLowerCase();
@@ -987,7 +1060,9 @@ function createSaegerestholzUnit(){
         const latlng = hit.marker.getLatLng();
         map.setView(latlng, 9);
         if (hit.marker.openTooltip) hit.marker.openTooltip();
-        unit.handleMarkerClick(hit.type==="firma" ? hit.firma : (hit.name||query), {
+
+        // Klicklogik: setzt Start/Ziel wie normal
+        unit.handleNormalClick(hit.type==="firma" ? hit.firma : (hit.name||query), {
           lat: latlng.lat, lon: latlng.lng, country_code: hit.country_code || ""
         });
         return;
@@ -1001,13 +1076,24 @@ function createSaegerestholzUnit(){
         .bindTooltip(`<b>Ort:</b> ${query}`, {sticky:true})
         .addTo(map);
 
+      // Rechtsklick auch auf Suchmarker
       unit.tempSearchMarker.on("contextmenu",(ev)=>{
-        openRightClickPopup("saegerestholz","ort:"+query, `Ort: ${query}`, "", ev.latlng);
+        const p = map.latLngToContainerPoint(ev.latlng);
+        showCtxMenu({
+          unit,
+          mObj: {type:"ort", query},
+          coord: {lat:c.lat, lon:c.lon, country_code:(c.country_code||"")},
+          title: `Ort: ${query}`,
+          subtitle: "",
+          containerPoint: p
+        });
       });
 
       map.setView([c.lat, c.lon], 10);
       unit.tempSearchMarker.openTooltip();
-      unit.handleMarkerClick(`Ort: ${query}`, c);
+
+      // wie normaler Klick: Start/Ziel setzen
+      unit.handleNormalClick(`Ort: ${query}`, c);
     }
   };
 
@@ -1015,7 +1101,7 @@ function createSaegerestholzUnit(){
 }
 
 /* =========================================================
-   UNIT: PELLETS
+   UNIT: PELLETS (LAT/LON eingebaut)
 ========================================================= */
 
 function createPelletsUnit(){
@@ -1141,21 +1227,35 @@ function createPelletsUnit(){
     werke: [],
     kunden: [],
     alleMarker: [],
-    selectedPoints: [],
     routeLine: null,
     tempSearchMarker: null,
+
+    // NEU (für Rechtsklick)
+    startPoint: null,
+    endPoint: null,
+
+    clearRouteAndPoints(){
+      if (unit.routeLine && map.hasLayer(unit.routeLine)) map.removeLayer(unit.routeLine);
+      unit.routeLine = null;
+      unit.startPoint = null;
+      unit.endPoint = null;
+      closeCtxMenu();
+    },
+    setStartPoint(p){ unit.startPoint = p; },
+    setEndPoint(p){ unit.endPoint = p; },
+    async tryRoute(){
+      if (!unit.startPoint || !unit.endPoint) {
+        alert("Bitte Start UND Ziel setzen.");
+        return;
+      }
+      await unit.showRoute(unit.startPoint, unit.endPoint);
+    },
 
     async init(){
       const [firmen, kunden] = await Promise.all([loadFirmen(), loadKunden()]);
       unit.werke = firmen;
       unit.kunden = kunden;
       await unit.buildMap();
-    },
-
-    clearRouteAndPoints(){
-      if (unit.routeLine && map.hasLayer(unit.routeLine)) map.removeLayer(unit.routeLine);
-      unit.routeLine = null;
-      unit.selectedPoints = [];
     },
 
     async buildMap(){
@@ -1179,15 +1279,17 @@ function createPelletsUnit(){
               country_code: (c.country_code || "")
             }));
           })
-          .on("click",()=>unit.handleMarkerClick(w.firma,c))
+          .on("click",()=>unit.handleNormalClick(w.firma,c))
           .on("contextmenu",(ev)=>{
-            openRightClickPopup(
-              "pellets",
-              "firma:"+w.firma,
-              w.firma,
-              w.ort,
-              ev.latlng
-            );
+            const p = map.latLngToContainerPoint(ev.latlng);
+            showCtxMenu({
+              unit,
+              mObj: {type:"firma", firma:w.firma, ort:w.ort, zert:w.zert, sack:w.sack, country_code:(c.country_code||"")},
+              coord: {lat:c.lat, lon:c.lon, country_code:(c.country_code||"")},
+              title: w.firma,
+              subtitle: `${w.ort}${w.land? " · "+w.land:""}`,
+              containerPoint: p
+            });
           });
 
         unit.alleMarker.push({
@@ -1221,15 +1323,17 @@ function createPelletsUnit(){
 
         const m = L.marker([c.lat,c.lon],{icon:iconToUse})
           .bindTooltip(`<b>${k.name}</b><br>${k.ort}`,{sticky:true})
-          .on("click",()=>unit.handleMarkerClick(k.name,c))
+          .on("click",()=>unit.handleNormalClick(k.name,c))
           .on("contextmenu",(ev)=>{
-            openRightClickPopup(
-              "pellets",
-              "kunde:"+k.name,
-              k.name,
-              k.ort,
-              ev.latlng
-            );
+            const p = map.latLngToContainerPoint(ev.latlng);
+            showCtxMenu({
+              unit,
+              mObj: {type, name:k.name, ort:k.ort, land:k.land, country_code:(c.country_code||"")},
+              coord: {lat:c.lat, lon:c.lon, country_code:(c.country_code||"")},
+              title: k.name,
+              subtitle: `${k.ort}${k.land? " · "+k.land:""}`,
+              containerPoint: p
+            });
           });
 
         unit.alleMarker.push({
@@ -1333,13 +1437,10 @@ function createPelletsUnit(){
       }
     },
 
-    handleMarkerClick(label,coord){
-      unit.selectedPoints.push({label,coord});
-      if(unit.selectedPoints.length===2){
-        const [a,b]=unit.selectedPoints;
-        unit.showRoute(a,b);
-        unit.selectedPoints=[];
-      }
+    handleNormalClick(label,coord){
+      if (!unit.startPoint) { unit.setStartPoint({label, coord}); return; }
+      if (!unit.endPoint)   { unit.setEndPoint({label, coord}); unit.tryRoute(); return; }
+      unit.setStartPoint({label, coord}); unit.endPoint = null;
     },
 
     async showRoute(a,b){
@@ -1417,13 +1518,21 @@ function createPelletsUnit(){
         .addTo(map);
 
       unit.tempSearchMarker.on("contextmenu",(ev)=>{
-        openRightClickPopup("pellets","ort:"+query, `Ort: ${query}`, "", ev.latlng);
+        const p = map.latLngToContainerPoint(ev.latlng);
+        showCtxMenu({
+          unit,
+          mObj: {type:"ort", query},
+          coord: {lat:c.lat, lon:c.lon, country_code:(c.country_code||"")},
+          title: `Ort: ${query}`,
+          subtitle: "",
+          containerPoint: p
+        });
       });
 
       unit.tempSearchMarker.openTooltip();
       map.setView([c.lat, c.lon], 10);
 
-      unit.selectedPoints = [{ label: query, coord: { lat: c.lat, lon: c.lon } }];
+      unit.handleNormalClick(`Ort: ${query}`, { lat: c.lat, lon: c.lon, country_code: c.country_code||"" });
     }
   };
 
