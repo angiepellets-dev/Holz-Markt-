@@ -43,7 +43,7 @@ html,body{height:100%;margin:0}#map{height:100%;width:100%}
 .ctxbox .item:hover{background:#fafafa}
 .ctxbox .small{font-size:12px;opacity:.75}
 .ctxbox .pill{display:inline-block; padding:2px 6px; border-radius:999px; background:#f2f2f2; font-size:12px; margin-left:6px;}
-.ctxbox .topbar{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ctxbox .topbar{display:flex;justify-content:space-between;align-items:center;gap:8px; cursor:move; user-select:none}
 .ctxbox .xbtn{border:1px solid #ddd;background:#fff;border-radius:8px;cursor:pointer;padding:2px 8px; line-height:1.6;}
 .hidden{display:none!important}
 </style>
@@ -230,8 +230,8 @@ const chkKundenStreusalz = document.getElementById("chkKundenStreusalz");
 /*** ====== STATE / HELPERS ====== ***/
 let currentUnit = "";
 
-const geoCache=JSON.parse(localStorage.getItem("geoCache_MULTI_EU_v3")||"{}");
-const saveGeo=()=>localStorage.setItem("geoCache_MULTI_EU_v3",JSON.stringify(geoCache));
+const geoCache=JSON.parse(localStorage.getItem("geoCache_MULTI_EU_v4")||"{}");
+const saveGeo=()=>localStorage.setItem("geoCache_MULTI_EU_v4",JSON.stringify(geoCache));
 
 const distCache = new Map();
 const rKey = x => Math.round(x * 10000);
@@ -321,9 +321,9 @@ const unitStates = {
 };
 let activeGroup = null;
 let selectedPoints=[], routeLine=null, searchMarker=null;
-let ctxEl=null, ctxCustomer=null, lastMatches=[];
+let ctxEl=null, ctxCustomer=null;
 
-function closeCtx(){ if(ctxEl){ctxEl.remove(); ctxEl=null;} ctxCustomer=null; lastMatches=[]; }
+function closeCtx(){ if(ctxEl){ctxEl.remove(); ctxEl=null;} ctxCustomer=null; }
 function stopEvt(el){
   if(!el) return;
   L.DomEvent.disableClickPropagation(el);
@@ -331,6 +331,81 @@ function stopEvt(el){
   ["mousedown","click","dblclick","contextmenu"].forEach(ev=>el.addEventListener(ev, e=>e.stopPropagation()));
   el.addEventListener("wheel", e=>e.stopPropagation(), {passive:true});
   el.addEventListener("touchstart", e=>e.stopPropagation(), {passive:true});
+}
+
+/*** ✅ DRAGGABLE ctxbox (nur über Topbar) ***/
+function makeDraggable(ctxEl){
+  const bar = ctxEl.querySelector(".topbar");
+  if(!bar) return;
+
+  let dragging = false;
+  let startX = 0, startY = 0;
+  let startLeft = 0, startTop = 0;
+
+  const cont = map.getContainer();
+  const clamp = (n, min, max)=>Math.max(min, Math.min(max, n));
+
+  function onDown(clientX, clientY){
+    dragging = true;
+    const rect = ctxEl.getBoundingClientRect();
+    const contRect = cont.getBoundingClientRect();
+    startX = clientX; startY = clientY;
+    startLeft = rect.left - contRect.left;
+    startTop  = rect.top  - contRect.top;
+    document.body.style.userSelect = "none";
+  }
+  function onMove(clientX, clientY){
+    if(!dragging) return;
+    const dx = clientX - startX;
+    const dy = clientY - startY;
+    const w = ctxEl.offsetWidth;
+    const h = ctxEl.offsetHeight;
+    const newLeft = clamp(startLeft + dx, 6, cont.clientWidth - w - 6);
+    const newTop  = clamp(startTop  + dy, 6, cont.clientHeight - h - 6);
+    ctxEl.style.left = newLeft + "px";
+    ctxEl.style.top  = newTop  + "px";
+  }
+  function onUp(){
+    dragging = false;
+    document.body.style.userSelect = "";
+  }
+
+  // Maus
+  bar.addEventListener("mousedown", (e)=>{
+    if(e.target.closest && e.target.closest("#ctxClose")) return;
+    e.preventDefault(); e.stopPropagation();
+    onDown(e.clientX, e.clientY);
+
+    const mm = (ev)=>onMove(ev.clientX, ev.clientY);
+    const mu = ()=>{
+      document.removeEventListener("mousemove", mm);
+      document.removeEventListener("mouseup", mu);
+      onUp();
+    };
+    document.addEventListener("mousemove", mm);
+    document.addEventListener("mouseup", mu);
+  });
+
+  // Touch
+  bar.addEventListener("touchstart", (e)=>{
+    if(e.target.closest && e.target.closest("#ctxClose")) return;
+    const t = e.touches?.[0];
+    if(!t) return;
+    e.preventDefault(); e.stopPropagation();
+    onDown(t.clientX, t.clientY);
+
+    const tm = (ev)=>{
+      const tt = ev.touches?.[0];
+      if(tt) onMove(tt.clientX, tt.clientY);
+    };
+    const tu = ()=>{
+      document.removeEventListener("touchmove", tm);
+      document.removeEventListener("touchend", tu);
+      onUp();
+    };
+    document.addEventListener("touchmove", tm, {passive:false});
+    document.addEventListener("touchend", tu);
+  }, {passive:false});
 }
 
 /*** ===== PARSER Pellets/Streu ===== */
@@ -495,6 +570,8 @@ async function loadWerkeForUnit(unit){
     return data;
   }
 
+  if(unitStates[unit].werke) return unitStates[unit].werke;
+
   const url = (unit==="pellets") ? sheetUrlFirmenPellets : sheetUrlFirmenStreusalz;
   const data = await new Promise(res=>Papa.parse(url,{
     download:true, header:false, skipEmptyLines:true,
@@ -513,6 +590,8 @@ async function loadKundenForUnit(unit){
     unitStates.saegerestholz.kunden = data;
     return data;
   }
+
+  if(unitStates[unit].kunden) return unitStates[unit].kunden;
 
   const url = (unit==="pellets") ? sheetUrlKundenPellets : sheetUrlKundenStreusalz;
   const data = await new Promise(res=>Papa.parse(url,{
@@ -711,6 +790,7 @@ function openCustomerMenu(kunde, coord, mouseEvent){
 
   cont.appendChild(ctxEl);
   stopEvt(ctxEl);
+  makeDraggable(ctxEl); // ✅ draggable aktivieren
 
   ctxEl.querySelector("#ctxClose").addEventListener("click", closeCtx);
 
@@ -731,20 +811,31 @@ async function runTargetSearch(type, targetPrice){
   resBox.innerHTML = `<div class="small">Suche…</div>`;
 
   const st = unitStates[currentUnit];
+  const visibleFirms = st.markers.filter(m => m.type==="firma" && st.group.hasLayer(m.marker));
 
-  const visibleFirms = st.markers
-    .filter(m => m.type==="firma" && st.group.hasLayer(m.marker));
-
+  // ✅ Dedup
+  const seen = new Set();
   const candidates = [];
   for(const m of visibleFirms){
+    let base = null;
+
     if(isSaegerestholz()){
-      const base = m.prices?.[type];
-      if(isFinite(base) && base>0) candidates.push({ ...m, base });
-    } else {
+      base = m.prices?.[type];
+      if(!(isFinite(base) && base>0)) continue;
+      const key = `${lc(m.firma)}|${lc(m.ort)}|${type}|${base.toFixed(4)}`;
+      if(seen.has(key)) continue;
+      seen.add(key);
+      candidates.push({ ...m, base });
+    }else{
       const isSack = isPellets() && (type === "sack");
       const hasReal = isSack ? !m.keinPreisSack : !m.keinPreisWerk;
-      const base = isSack ? m._preisSackOrig : m._preisOrig;
-      if(hasReal && isFinite(base) && base>0) candidates.push({ ...m, base });
+      if(!hasReal) continue;
+      base = isSack ? m._preisSackOrig : m._preisOrig;
+      if(!(isFinite(base) && base>0)) continue;
+      const key = `${lc(m.firma)}|${lc(m.ort)}|${isSack?"sack":"lose"}|${base.toFixed(4)}`;
+      if(seen.has(key)) continue;
+      seen.add(key);
+      candidates.push({ ...m, base });
     }
   }
 
@@ -754,7 +845,6 @@ async function runTargetSearch(type, targetPrice){
   }
 
   const c = ctxCustomer.coord;
-
   const dests = candidates.map(f => ({ lat: f._coord.lat, lon: f._coord.lon }));
   let dists = [];
   try{
@@ -837,11 +927,6 @@ async function runTargetSearch(type, targetPrice){
 }
 
 /*** ===== Build unit ONCE ===== */
-function buildQueriesPLZOrtLandCached(obj){
-  // alias (damit nicht doppelt)
-  return buildQueriesPLZOrtLand(obj);
-}
-
 async function buildUnitOnce(unit){
   const st = unitStates[unit];
   if(st.built) return;
@@ -858,13 +943,13 @@ async function buildUnitOnce(unit){
   for(const w of st.werke){
     let c=null;
     if(unit==="saegerestholz"){
-      const qs = buildQueriesPLZOrtLandCached(w);
+      const qs = buildQueriesPLZOrtLand(w);
       for(const q of qs){
         c = geoCache[q]?.country_code ? geoCache[q] : await geocodeCached(q);
         if(c) break;
       }
     }else{
-      c = geoCache[w.ort]?.country_code ? geoCache[w.ort] : await geocodeCached(w.ort);
+      c = (w.country_code && isFinite(geoCache[w.ort]?.lat)) ? geoCache[w.ort] : (geoCache[w.ort]?.country_code ? geoCache[w.ort] : await geocodeCached(w.ort));
     }
     if(!c) continue;
 
@@ -890,7 +975,7 @@ async function buildUnitOnce(unit){
   for(const k of st.kunden){
     let c=null;
     if(unit==="saegerestholz"){
-      const qs = buildQueriesPLZOrtLandCached(k);
+      const qs = buildQueriesPLZOrtLand(k);
       for(const q of qs){
         c = geoCache[q]?.country_code ? geoCache[q] : await geocodeCached(q);
         if(c) break;
@@ -913,7 +998,7 @@ async function buildUnitOnce(unit){
       type="saegKunde"; icon=iconBlue;
     }
 
-    const name = k.name || k.kunde || k.firma || "Kunde";
+    const name = k.name || "Kunde";
     const ortText = (unit==="saegerestholz")
       ? `${k.plz ? k.plz+" " : ""}${k.ort||""}`.trim()
       : (k.ort||"");
@@ -1120,16 +1205,9 @@ map.on("click", (e)=>{
 });
 document.addEventListener("keydown", (e)=>{ if(e.key === "Escape") clearRoute(); });
 
-document.addEventListener("mousedown",(e)=>{
-  if(!ctxEl) return;
-  if(ctxEl.contains(e.target)) return;
-  closeCtx();
-});
+/* ❌ KEIN "nebenklicken = schließen" mehr!  (Nur X schließt) */
 
-// ✅ WICHTIG: Box bleibt beim Zoomen/Bewegen stehen → KEIN closeCtx mehr hier!
-// map.on("movestart", closeCtx);
-// map.on("zoomstart", closeCtx);
-
+// ✅ Box bleibt beim Zoomen/Bewegen stehen (kein closeCtx hier!)
 document.addEventListener("change",e=>{
   if(e.target?.matches('input[type="checkbox"]')){
     if(e.target.classList.contains("countryChk")){
