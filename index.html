@@ -57,7 +57,7 @@ html,body{height:100%;margin:0}#map{height:100%;width:100%}
 <!-- Suche + Länder + Unit -->
 <div class="box search">
   <div>🔍 <input id="searchInput" placeholder="Firma, Kunde oder Ort suchen…" disabled></div>
-  <div class="hint" id="uiHint">Bitte zuerst eine Unit auswählen.</div>
+  <div class="hint" id="uiHint"></div>
 
   <b style="display:block;margin-top:8px">Land / Länder filtern</b>
   <div class="dd" id="countryDropdown">
@@ -1113,9 +1113,7 @@ async function setUnit(newUnit){
     return;
   }
 
-  uiHint.textContent = "Unit aktiv – du kannst suchen, klicken (Route) oder Rechtsklick (Zielpreis).";
-  applyUnitUIOnly();
-
+ 
   // einmalig bauen
   await buildUnitOnce(currentUnit);
 
