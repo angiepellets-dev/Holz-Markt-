@@ -230,6 +230,7 @@ const chkKundenStreusalz = document.getElementById("chkKundenStreusalz");
 /*** ====== STATE / HELPERS ====== ***/
 let currentUnit = "";
 
+/*** ✅ GEO CACHE (nur fallback wenn lat/lon fehlt) ***/
 const geoCache=JSON.parse(localStorage.getItem("geoCache_MULTI_EU_v4")||"{}");
 const saveGeo=()=>localStorage.setItem("geoCache_MULTI_EU_v4",JSON.stringify(geoCache));
 
@@ -274,6 +275,35 @@ function countryCodeFromLand(landRaw){
   if (s.includes("niederlande") || s.includes("netherlands") || s==="nl") return "nl";
   if (s.includes("united kingdom") || s.includes("uk") || s.includes("england") || s==="gb") return "gb";
   return "";
+}
+
+/*** ✅ Lat/Lon helper (find column names OR fallback to Spalte R/S) ***/
+function detectLatLonFromRowObj(obj){
+  if(!obj) return {lat:NaN, lon:NaN};
+  const keys = Object.keys(obj);
+  const kLat = keys.find(k=>["lat","latitude","breite","breitengrad","y"].includes(lc(k)));
+  const kLon = keys.find(k=>["lon","lng","longitude","laenge","länge","laengengrad","x"].includes(lc(k)));
+  let lat = kLat ? num(obj[kLat]) : NaN;
+  let lon = kLon ? num(obj[kLon]) : NaN;
+
+  // fallback: Spalte R/S = keys[17], keys[18] (wenn es so exportiert wurde)
+  if(!(isFinite(lat) && isFinite(lon)) && keys.length>=19){
+    const lat2 = num(obj[keys[17]]);
+    const lon2 = num(obj[keys[18]]);
+    if(isFinite(lat2) && isFinite(lon2)){ lat = lat2; lon = lon2; }
+  }
+  return {lat, lon};
+}
+function latLonValid(o){
+  return o && isFinite(o.lat) && isFinite(o.lon) && Math.abs(o.lat)<=90 && Math.abs(o.lon)<=180;
+}
+
+/*** ✅ Für header:false Tabellen (Pellets/Streu Firmen) lat/lon aus Index 17/18 lesen ***/
+function detectLatLonFromRowArray(arr){
+  const lat = num(arr?.[17]);
+  const lon = num(arr?.[18]);
+  if(isFinite(lat) && isFinite(lon) && Math.abs(lat)<=90 && Math.abs(lon)<=180) return {lat, lon};
+  return {lat:NaN, lon:NaN};
 }
 
 async function geocodeCached(q){
@@ -437,6 +467,10 @@ function parseFirmenArray(table){
       const p = num(r[preisIdx]);
       const ps = num(r[sackIdx]);
       const land = landIdx>=0 ? str(r[landIdx]) : "";
+
+      // ✅ lat/lon aus Spalte R/S (Index 17/18)
+      const ll = detectLatLonFromRowArray(r);
+
       return {
         firma: str(r[nameIdx]),
         ort: str(r[ortIdx]),
@@ -445,6 +479,7 @@ function parseFirmenArray(table){
         preis: p, preisSack: ps,
         zert: zertIdx>=0 ? str(r[zertIdx]) : "",
         sack: sackTxtIdx>=0 ? str(r[sackTxtIdx]) : "",
+        lat: ll.lat, lon: ll.lon,
         _preisOrig: p, _preisSackOrig: ps
       };
     });
@@ -458,13 +493,17 @@ function parseKunden(rows){
     sonstKey=(keys.find(k=>lc(k)==="sonstige")||"sonstige"),
     landKey=(keys.find(k=>["land","country"].includes(lc(k)))||null);
 
-  return rows.map(x=>({
-    name:str(x[nameKey]),
-    ort:str(x[ortKey]),
-    land: landKey ? str(x[landKey]) : "",
-    country_code: countryCodeFromLand(landKey ? str(x[landKey]) : ""),
-    lose:lc(x[loseKey]), sackware:lc(x[sackKey]), sonstige:lc(x[sonstKey])
-  })).filter(x=>x.name&&x.ort);
+  return rows.map(x=>{
+    const ll = detectLatLonFromRowObj(x); // ✅ lat/lon auch bei Kunden
+    return ({
+      name:str(x[nameKey]),
+      ort:str(x[ortKey]),
+      land: landKey ? str(x[landKey]) : "",
+      country_code: countryCodeFromLand(landKey ? str(x[landKey]) : ""),
+      lose:lc(x[loseKey]), sackware:lc(x[sackKey]), sonstige:lc(x[sonstKey]),
+      lat: ll.lat, lon: ll.lon
+    });
+  }).filter(x=>x.name&&x.ort);
 }
 function normalizePreise(d){
   const w=d.filter(x=>isFinite(x.preis)&&x.preis>0);
@@ -518,6 +557,10 @@ function parseSaegerestholzFirmen(rows){
       }
     }
     const land = str(x[landKey]);
+
+    // ✅ lat/lon aus Spalte/Key (oder fallback R/S)
+    const ll = detectLatLonFromRowObj(x);
+
     return {
       firma: str(x[firmaKey]),
       plz: str(x[plzKey]),
@@ -525,7 +568,8 @@ function parseSaegerestholzFirmen(rows){
       land,
       country_code: countryCodeFromLand(land),
       zert: zertKey ? str(x[zertKey]) : "",
-      prices
+      prices,
+      lat: ll.lat, lon: ll.lon
     };
   }).filter(w=>w.firma && (w.plz || w.ort));
 }
@@ -539,12 +583,14 @@ function parseSaegerestholzKunden(rows){
 
   return rows.map(x=>{
     const land = str(x[landKey]);
+    const ll = detectLatLonFromRowObj(x); // ✅ lat/lon
     return {
       name: str(x[nameKey]),
       plz: str(x[plzKey]),
       ort: str(x[ortKey]),
       land,
-      country_code: countryCodeFromLand(land)
+      country_code: countryCodeFromLand(land),
+      lat: ll.lat, lon: ll.lon
     };
   }).filter(k=>k.name && (k.plz || k.ort));
 }
@@ -795,7 +841,7 @@ function openCustomerMenu(kunde, coord, mouseEvent){
 
   cont.appendChild(ctxEl);
   stopEvt(ctxEl);
-  makeDraggable(ctxEl); // ✅ draggable aktivieren
+  makeDraggable(ctxEl);
 
   ctxEl.querySelector("#ctxClose").addEventListener("click", closeCtx);
 
@@ -818,7 +864,6 @@ async function runTargetSearch(type, targetPrice){
   const st = unitStates[currentUnit];
   const visibleFirms = st.markers.filter(m => m.type==="firma" && st.group.hasLayer(m.marker));
 
-  // ✅ Dedup
   const seen = new Set();
   const candidates = [];
   for(const m of visibleFirms){
@@ -943,15 +988,17 @@ async function buildUnitOnce(unit){
   for(const w of st.werke){
     let c=null;
 
-    if(unit==="saegerestholz"){
-      const qs = buildQueriesPLZOrtLand(w);
-      for(const q of qs){
-        c = await geocodeCached(q);
-        if(c) break;
+    // ✅ 1) Wenn lat/lon da ist: DIREKT
+    if(latLonValid(w)){
+      c = { lat: w.lat, lon: w.lon, country_code: (w.country_code||""), country: w.land||"" };
+    } else {
+      // ✅ 2) sonst fallback geocode
+      if(unit==="saegerestholz"){
+        const qs = buildQueriesPLZOrtLand(w);
+        for(const q of qs){ c = await geocodeCached(q); if(c) break; }
+      } else {
+        c = await geocodeCached(w.ort);
       }
-    }else{
-      // Pellets/Streu: "ort" geocoden
-      c = await geocodeCached(w.ort);
     }
     if(!c) continue;
 
@@ -977,14 +1024,17 @@ async function buildUnitOnce(unit){
   for(const k of st.kunden){
     let c=null;
 
-    if(unit==="saegerestholz"){
-      const qs = buildQueriesPLZOrtLand(k);
-      for(const q of qs){
-        c = await geocodeCached(q);
-        if(c) break;
+    // ✅ 1) Wenn lat/lon da ist: DIREKT
+    if(latLonValid(k)){
+      c = { lat: k.lat, lon: k.lon, country_code: (k.country_code||""), country: k.land||"" };
+    } else {
+      // ✅ 2) sonst fallback geocode
+      if(unit==="saegerestholz"){
+        const qs = buildQueriesPLZOrtLand(k);
+        for(const q of qs){ c = await geocodeCached(q); if(c) break; }
+      } else {
+        c = await geocodeCached(k.ort);
       }
-    }else{
-      c = await geocodeCached(k.ort);
     }
     if(!c) continue;
 
@@ -1208,9 +1258,6 @@ map.on("click", (e)=>{
 });
 document.addEventListener("keydown", (e)=>{ if(e.key === "Escape") clearRoute(); });
 
-/* ❌ KEIN "nebenklicken = schließen" mehr!  (Nur X schließt) */
-/* ✅ Box bleibt beim Zoomen/Bewegen stehen (kein closeCtx bei move/zoom) */
-
 document.addEventListener("change",e=>{
   if(e.target?.matches('input[type="checkbox"]')){
     if(e.target.classList.contains("countryChk")){
@@ -1249,6 +1296,7 @@ searchInput.addEventListener("keydown",async e=>{
     if(i===0) m.marker.openTooltip?.();
   });
 
+  // Ortssuche (Nominatim) bleibt verfügbar
   const geo=await geocodeCached(raw);
   if(geo){
     const ll=[geo.lat,geo.lon];
