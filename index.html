@@ -230,7 +230,6 @@ const chkKundenStreusalz = document.getElementById("chkKundenStreusalz");
 /*** ====== STATE / HELPERS ====== ***/
 let currentUnit = "";
 
-/*** ✅ GEO CACHE (nur fallback wenn lat/lon fehlt) ***/
 const geoCache=JSON.parse(localStorage.getItem("geoCache_MULTI_EU_v4")||"{}");
 const saveGeo=()=>localStorage.setItem("geoCache_MULTI_EU_v4",JSON.stringify(geoCache));
 
@@ -277,33 +276,44 @@ function countryCodeFromLand(landRaw){
   return "";
 }
 
-/*** ✅ Lat/Lon helper (find column names OR fallback to Spalte R/S) ***/
-function detectLatLonFromRowObj(obj){
+/*** ✅ Lat/Lon FIX: bei header:true IMMER über meta.fields Index 17/18 (Spalte R/S) ***/
+function detectLatLonFromRowObj(obj, fields){
   if(!obj) return {lat:NaN, lon:NaN};
+
+  // 1) Wenn Spalten wirklich so heißen (lat/lon etc.)
   const keys = Object.keys(obj);
   const kLat = keys.find(k=>["lat","latitude","breite","breitengrad","y"].includes(lc(k)));
   const kLon = keys.find(k=>["lon","lng","longitude","laenge","länge","laengengrad","x"].includes(lc(k)));
   let lat = kLat ? num(obj[kLat]) : NaN;
   let lon = kLon ? num(obj[kLon]) : NaN;
+  if(isFinite(lat) && isFinite(lon)) return {lat, lon};
 
-  // fallback: Spalte R/S = keys[17], keys[18] (wenn es so exportiert wurde)
-  if(!(isFinite(lat) && isFinite(lon)) && keys.length>=19){
-    const lat2 = num(obj[keys[17]]);
-    const lon2 = num(obj[keys[18]]);
-    if(isFinite(lat2) && isFinite(lon2)){ lat = lat2; lon = lon2; }
+  // 2) Stabil: Spalte R/S = fields[17]/fields[18]
+  if(Array.isArray(fields) && fields.length >= 19){
+    const latKey = fields[17];
+    const lonKey = fields[18];
+    const lat2 = num(obj[latKey]);
+    const lon2 = num(obj[lonKey]);
+    if(isFinite(lat2) && isFinite(lon2)) return {lat:lat2, lon:lon2};
   }
-  return {lat, lon};
-}
-function latLonValid(o){
-  return o && isFinite(o.lat) && isFinite(o.lon) && Math.abs(o.lat)<=90 && Math.abs(o.lon)<=180;
-}
 
-/*** ✅ Für header:false Tabellen (Pellets/Streu Firmen) lat/lon aus Index 17/18 lesen ***/
+  // 3) Letzter Fallback (falls fields fehlt)
+  if(keys.length >= 19){
+    const lat3 = num(obj[keys[17]]);
+    const lon3 = num(obj[keys[18]]);
+    if(isFinite(lat3) && isFinite(lon3)) return {lat:lat3, lon:lon3};
+  }
+
+  return {lat:NaN, lon:NaN};
+}
 function detectLatLonFromRowArray(arr){
   const lat = num(arr?.[17]);
   const lon = num(arr?.[18]);
   if(isFinite(lat) && isFinite(lon) && Math.abs(lat)<=90 && Math.abs(lon)<=180) return {lat, lon};
   return {lat:NaN, lon:NaN};
+}
+function latLonValid(o){
+  return o && isFinite(o.lat) && isFinite(o.lon) && Math.abs(o.lat)<=90 && Math.abs(o.lon)<=180;
 }
 
 async function geocodeCached(q){
@@ -439,7 +449,7 @@ function makeDraggable(ctxEl){
   }, {passive:false});
 }
 
-/*** ===== PARSER Pellets/Streu ===== */
+/*** ===== PARSER Pellets/Streu Firmen (header:false) ===== */
 function findIndex(headers, cands){
   const hs=headers.map(h=>lc(h));
   const cs=cands.map(c=>lc(c));
@@ -468,8 +478,7 @@ function parseFirmenArray(table){
       const ps = num(r[sackIdx]);
       const land = landIdx>=0 ? str(r[landIdx]) : "";
 
-      // ✅ lat/lon aus Spalte R/S (Index 17/18)
-      const ll = detectLatLonFromRowArray(r);
+      const ll = detectLatLonFromRowArray(r); // ✅ R/S
 
       return {
         firma: str(r[nameIdx]),
@@ -484,7 +493,9 @@ function parseFirmenArray(table){
       };
     });
 }
-function parseKunden(rows){
+
+/*** ===== PARSER Pellets/Streu Kunden (header:true) ===== */
+function parseKunden(rows, fields){
   const keys=Object.keys(rows[0]||{}),
     nameKey=(keys.find(k=>["name","kunde","kundenname"].includes(lc(k)))||keys[0]),
     ortKey=(keys.find(k=>["ort","adresse","standort","anschrift","stadt","location"].includes(lc(k)))||keys[1]),
@@ -494,7 +505,7 @@ function parseKunden(rows){
     landKey=(keys.find(k=>["land","country"].includes(lc(k)))||null);
 
   return rows.map(x=>{
-    const ll = detectLatLonFromRowObj(x); // ✅ lat/lon auch bei Kunden
+    const ll = detectLatLonFromRowObj(x, fields); // ✅ FIX
     return ({
       name:str(x[nameKey]),
       ort:str(x[ortKey]),
@@ -505,6 +516,7 @@ function parseKunden(rows){
     });
   }).filter(x=>x.name&&x.ort);
 }
+
 function normalizePreise(d){
   const w=d.filter(x=>isFinite(x.preis)&&x.preis>0);
   const s=d.filter(x=>isFinite(x.preisSack)&&x.preisSack>0);
@@ -530,7 +542,8 @@ function normProduktName(p){
   if (s.includes("siebmaterial")) return "siebmaterial";
   return "";
 }
-function parseSaegerestholzFirmen(rows){
+
+function parseSaegerestholzFirmen(rows, fields){
   const keys = Object.keys(rows[0]||{});
   const pick = (cands) => keys.find(k=>cands.includes(lc(k)));
   const firmaKey = pick(["firma","name","werk"]) || keys[0];
@@ -558,8 +571,7 @@ function parseSaegerestholzFirmen(rows){
     }
     const land = str(x[landKey]);
 
-    // ✅ lat/lon aus Spalte/Key (oder fallback R/S)
-    const ll = detectLatLonFromRowObj(x);
+    const ll = detectLatLonFromRowObj(x, fields); // ✅ FIX
 
     return {
       firma: str(x[firmaKey]),
@@ -573,7 +585,8 @@ function parseSaegerestholzFirmen(rows){
     };
   }).filter(w=>w.firma && (w.plz || w.ort));
 }
-function parseSaegerestholzKunden(rows){
+
+function parseSaegerestholzKunden(rows, fields){
   const keys = Object.keys(rows[0]||{});
   const pick = (cands) => keys.find(k=>cands.includes(lc(k)));
   const nameKey = pick(["kunde","name","firma","unternehmen"]) || keys[0];
@@ -583,7 +596,7 @@ function parseSaegerestholzKunden(rows){
 
   return rows.map(x=>{
     const land = str(x[landKey]);
-    const ll = detectLatLonFromRowObj(x); // ✅ lat/lon
+    const ll = detectLatLonFromRowObj(x, fields); // ✅ FIX
     return {
       name: str(x[nameKey]),
       plz: str(x[plzKey]),
@@ -594,6 +607,7 @@ function parseSaegerestholzKunden(rows){
     };
   }).filter(k=>k.name && (k.plz || k.ort));
 }
+
 function buildQueriesPLZOrtLand(obj){
   const plz=(obj.plz||"").trim();
   const ort=(obj.ort||"").trim();
@@ -611,7 +625,10 @@ async function loadWerkeForUnit(unit){
     if(unitStates.saegerestholz.werke) return unitStates.saegerestholz.werke;
     const data = await new Promise(res=>Papa.parse(sheetUrlFirmenSaegerestholz,{
       download:true, header:true, skipEmptyLines:true,
-      complete:r=>{ try{ res(parseSaegerestholzFirmen(r.data||[])) }catch(e){ res([]) } },
+      complete:r=>{ 
+        try{ res(parseSaegerestholzFirmen(r.data||[], r.meta?.fields||[])) }
+        catch(e){ res([]) }
+      },
       error:_=>res([])
     }));
     unitStates.saegerestholz.werke = data;
@@ -629,12 +646,16 @@ async function loadWerkeForUnit(unit){
   unitStates[unit].werke = data;
   return data;
 }
+
 async function loadKundenForUnit(unit){
   if(unit==="saegerestholz"){
     if(unitStates.saegerestholz.kunden) return unitStates.saegerestholz.kunden;
     const data = await new Promise(res=>Papa.parse(sheetUrlKundenSaegerestholz,{
       download:true, header:true, skipEmptyLines:true,
-      complete:r=>{ try{ res(parseSaegerestholzKunden(r.data||[])) }catch(e){ res([]) } },
+      complete:r=>{ 
+        try{ res(parseSaegerestholzKunden(r.data||[], r.meta?.fields||[])) }
+        catch(e){ res([]) }
+      },
       error:_=>res([])
     }));
     unitStates.saegerestholz.kunden = data;
@@ -646,7 +667,10 @@ async function loadKundenForUnit(unit){
   const url = (unit==="pellets") ? sheetUrlKundenPellets : sheetUrlKundenStreusalz;
   const data = await new Promise(res=>Papa.parse(url,{
     download:true, header:true, skipEmptyLines:true,
-    complete:r=>{ try{ res(parseKunden(r.data||[])) }catch(e){ res([]) } },
+    complete:r=>{ 
+      try{ res(parseKunden(r.data||[], r.meta?.fields||[])) }
+      catch(e){ res([]) }
+    },
     error:_=>res([])
   }));
   unitStates[unit].kunden = data;
@@ -988,15 +1012,13 @@ async function buildUnitOnce(unit){
   for(const w of st.werke){
     let c=null;
 
-    // ✅ 1) Wenn lat/lon da ist: DIREKT
     if(latLonValid(w)){
       c = { lat: w.lat, lon: w.lon, country_code: (w.country_code||""), country: w.land||"" };
     } else {
-      // ✅ 2) sonst fallback geocode
       if(unit==="saegerestholz"){
         const qs = buildQueriesPLZOrtLand(w);
         for(const q of qs){ c = await geocodeCached(q); if(c) break; }
-      } else {
+      }else{
         c = await geocodeCached(w.ort);
       }
     }
@@ -1024,15 +1046,13 @@ async function buildUnitOnce(unit){
   for(const k of st.kunden){
     let c=null;
 
-    // ✅ 1) Wenn lat/lon da ist: DIREKT
     if(latLonValid(k)){
       c = { lat: k.lat, lon: k.lon, country_code: (k.country_code||""), country: k.land||"" };
     } else {
-      // ✅ 2) sonst fallback geocode
       if(unit==="saegerestholz"){
         const qs = buildQueriesPLZOrtLand(k);
         for(const q of qs){ c = await geocodeCached(q); if(c) break; }
-      } else {
+      }else{
         c = await geocodeCached(k.ort);
       }
     }
@@ -1296,7 +1316,6 @@ searchInput.addEventListener("keydown",async e=>{
     if(i===0) m.marker.openTooltip?.();
   });
 
-  // Ortssuche (Nominatim) bleibt verfügbar
   const geo=await geocodeCached(raw);
   if(geo){
     const ll=[geo.lat,geo.lon];
