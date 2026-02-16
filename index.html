@@ -278,32 +278,33 @@ function countryCodeFromLand(landRaw){
 
 async function geocodeCached(q){
   if(!q) return null;
-  if(geoCache[q]?.country_code) return geoCache[q];
-  const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(q)}&limit=1&accept-language=de`);
-  const d=await r.json(); if(!d.length) return null;
-  const a=d[0].address||{}, o={lat:+d[0].lat,lon:+d[0].lon,country:a.country||"",country_code:(a.country_code||"").toLowerCase()};
-  geoCache[q]=o; saveGeo(); return o;
+  if(geoCache[q]?.country_code && isFinite(geoCache[q]?.lat) && isFinite(geoCache[q]?.lon)) return geoCache[q];
+  try{
+    const r=await fetch(`https://nominatim.openstreetmap.org/search?format=json&addressdetails=1&q=${encodeURIComponent(q)}&limit=1&accept-language=de`);
+    const d=await r.json(); if(!d.length) return null;
+    const a=d[0].address||{}, o={lat:+d[0].lat,lon:+d[0].lon,country:a.country||"",country_code:(a.country_code||"").toLowerCase()};
+    geoCache[q]=o; saveGeo(); return o;
+  }catch(e){
+    return null;
+  }
 }
 
-async function osrmDistKm(a,b){
-  const url=`https://router.project-osrm.org/route/v1/driving/${a.lon},${a.lat};${b.lon},${b.lat}?overview=false`;
-  const res=await fetch(url);
-  const data=res.ok?await res.json():null;
-  if(data?.routes?.length) return data.routes[0].distance/1000;
-  return null;
-}
 async function osrmTableDistKmFromSourceToMany(source, destCoords){
   if(!destCoords?.length) return [];
   const all = [source, ...destCoords];
   const coordsStr = all.map(p => `${p.lon},${p.lat}`).join(";");
   const destinations = destCoords.map((_,i)=> String(i+1)).join(";");
   const url = `https://router.project-osrm.org/table/v1/driving/${coordsStr}?sources=0&destinations=${destinations}&annotations=distance`;
-  const res = await fetch(url);
-  if(!res.ok) return destCoords.map(()=>null);
-  const data = await res.json();
-  const row = data?.distances?.[0];
-  if(!row) return destCoords.map(()=>null);
-  return row.map(m => (m==null ? null : m/1000));
+  try{
+    const res = await fetch(url);
+    if(!res.ok) return destCoords.map(()=>null);
+    const data = await res.json();
+    const row = data?.distances?.[0];
+    if(!row) return destCoords.map(()=>null);
+    return row.map(m => (m==null ? null : m/1000));
+  }catch(e){
+    return destCoords.map(()=>null);
+  }
 }
 
 const tri=(fill)=>L.divIcon({
@@ -564,7 +565,8 @@ async function loadWerkeForUnit(unit){
     if(unitStates.saegerestholz.werke) return unitStates.saegerestholz.werke;
     const data = await new Promise(res=>Papa.parse(sheetUrlFirmenSaegerestholz,{
       download:true, header:true, skipEmptyLines:true,
-      complete:r=>{ try{ res(parseSaegerestholzFirmen(r.data||[])) }catch(e){ res([]) } }
+      complete:r=>{ try{ res(parseSaegerestholzFirmen(r.data||[])) }catch(e){ res([]) } },
+      error:_=>res([])
     }));
     unitStates.saegerestholz.werke = data;
     return data;
@@ -575,8 +577,9 @@ async function loadWerkeForUnit(unit){
   const url = (unit==="pellets") ? sheetUrlFirmenPellets : sheetUrlFirmenStreusalz;
   const data = await new Promise(res=>Papa.parse(url,{
     download:true, header:false, skipEmptyLines:true,
-    complete:r=>{ try{ res(normalizePreise(parseFirmenArray(r.data||[]))) }catch(e){ res([]) } }
-    }));
+    complete:r=>{ try{ res(normalizePreise(parseFirmenArray(r.data||[]))) }catch(e){ res([]) } },
+    error:_=>res([])
+  }));
   unitStates[unit].werke = data;
   return data;
 }
@@ -585,7 +588,8 @@ async function loadKundenForUnit(unit){
     if(unitStates.saegerestholz.kunden) return unitStates.saegerestholz.kunden;
     const data = await new Promise(res=>Papa.parse(sheetUrlKundenSaegerestholz,{
       download:true, header:true, skipEmptyLines:true,
-      complete:r=>{ try{ res(parseSaegerestholzKunden(r.data||[])) }catch(e){ res([]) } }
+      complete:r=>{ try{ res(parseSaegerestholzKunden(r.data||[])) }catch(e){ res([]) } },
+      error:_=>res([])
     }));
     unitStates.saegerestholz.kunden = data;
     return data;
@@ -596,7 +600,8 @@ async function loadKundenForUnit(unit){
   const url = (unit==="pellets") ? sheetUrlKundenPellets : sheetUrlKundenStreusalz;
   const data = await new Promise(res=>Papa.parse(url,{
     download:true, header:true, skipEmptyLines:true,
-    complete:r=>{ try{ res(parseKunden(r.data||[])) }catch(e){ res([]) } }
+    complete:r=>{ try{ res(parseKunden(r.data||[])) }catch(e){ res([]) } },
+    error:_=>res([])
   }));
   unitStates[unit].kunden = data;
   return data;
@@ -846,12 +851,7 @@ async function runTargetSearch(type, targetPrice){
 
   const c = ctxCustomer.coord;
   const dests = candidates.map(f => ({ lat: f._coord.lat, lon: f._coord.lon }));
-  let dists = [];
-  try{
-    dists = await osrmTableDistKmFromSourceToMany({lat:c.lat,lon:c.lon}, dests);
-  }catch(e){
-    dists = dests.map(()=>null);
-  }
+  const dists = await osrmTableDistKmFromSourceToMany({lat:c.lat,lon:c.lon}, dests);
 
   const matches = [];
   for(let i=0;i<candidates.length;i++){
@@ -942,14 +942,16 @@ async function buildUnitOnce(unit){
   // Firmen
   for(const w of st.werke){
     let c=null;
+
     if(unit==="saegerestholz"){
       const qs = buildQueriesPLZOrtLand(w);
       for(const q of qs){
-        c = geoCache[q]?.country_code ? geoCache[q] : await geocodeCached(q);
+        c = await geocodeCached(q);
         if(c) break;
       }
     }else{
-      c = (w.country_code && isFinite(geoCache[w.ort]?.lat)) ? geoCache[w.ort] : (geoCache[w.ort]?.country_code ? geoCache[w.ort] : await geocodeCached(w.ort));
+      // Pellets/Streu: "ort" geocoden
+      c = await geocodeCached(w.ort);
     }
     if(!c) continue;
 
@@ -974,14 +976,15 @@ async function buildUnitOnce(unit){
   // Kunden
   for(const k of st.kunden){
     let c=null;
+
     if(unit==="saegerestholz"){
       const qs = buildQueriesPLZOrtLand(k);
       for(const q of qs){
-        c = geoCache[q]?.country_code ? geoCache[q] : await geocodeCached(q);
+        c = await geocodeCached(q);
         if(c) break;
       }
     }else{
-      c = geoCache[k.ort]?.country_code ? geoCache[k.ort] : await geocodeCached(k.ort);
+      c = await geocodeCached(k.ort);
     }
     if(!c) continue;
 
@@ -1206,8 +1209,8 @@ map.on("click", (e)=>{
 document.addEventListener("keydown", (e)=>{ if(e.key === "Escape") clearRoute(); });
 
 /* ❌ KEIN "nebenklicken = schließen" mehr!  (Nur X schließt) */
+/* ✅ Box bleibt beim Zoomen/Bewegen stehen (kein closeCtx bei move/zoom) */
 
-// ✅ Box bleibt beim Zoomen/Bewegen stehen (kein closeCtx hier!)
 document.addEventListener("change",e=>{
   if(e.target?.matches('input[type="checkbox"]')){
     if(e.target.classList.contains("countryChk")){
