@@ -276,6 +276,22 @@ function countryCodeFromLand(landRaw){
   return "";
 }
 
+/*** ✅ Plausibilitäts-Checks (Fix für Afrika-Ausreißer / Swap) ***/
+function latLonValid(o){
+  return o && isFinite(o.lat) && isFinite(o.lon) && Math.abs(o.lat)<=90 && Math.abs(o.lon)<=180;
+}
+function latLonLooksEurope(o){
+  if(!latLonValid(o)) return false;
+  return (o.lat >= 34 && o.lat <= 72 && o.lon >= -25 && o.lon <= 45);
+}
+function fixSwapIfNeeded(o){
+  if(!latLonValid(o)) return o;
+  if(latLonLooksEurope(o)) return o;
+  const swapped = {lat:o.lon, lon:o.lat};
+  if(latLonLooksEurope(swapped)) return swapped;
+  return o;
+}
+
 /*** ✅ Lat/Lon FIX: bei header:true IMMER über meta.fields Index 17/18 (Spalte R/S) ***/
 function detectLatLonFromRowObj(obj, fields){
   if(!obj) return {lat:NaN, lon:NaN};
@@ -286,7 +302,7 @@ function detectLatLonFromRowObj(obj, fields){
   const kLon = keys.find(k=>["lon","lng","longitude","laenge","länge","laengengrad","x"].includes(lc(k)));
   let lat = kLat ? num(obj[kLat]) : NaN;
   let lon = kLon ? num(obj[kLon]) : NaN;
-  if(isFinite(lat) && isFinite(lon)) return {lat, lon};
+  if(isFinite(lat) && isFinite(lon)) return fixSwapIfNeeded({lat, lon});
 
   // 2) Stabil: Spalte R/S = fields[17]/fields[18]
   if(Array.isArray(fields) && fields.length >= 19){
@@ -294,26 +310,26 @@ function detectLatLonFromRowObj(obj, fields){
     const lonKey = fields[18];
     const lat2 = num(obj[latKey]);
     const lon2 = num(obj[lonKey]);
-    if(isFinite(lat2) && isFinite(lon2)) return {lat:lat2, lon:lon2};
+    if(isFinite(lat2) && isFinite(lon2)) return fixSwapIfNeeded({lat:lat2, lon:lon2});
   }
 
   // 3) Letzter Fallback (falls fields fehlt)
   if(keys.length >= 19){
     const lat3 = num(obj[keys[17]]);
     const lon3 = num(obj[keys[18]]);
-    if(isFinite(lat3) && isFinite(lon3)) return {lat:lat3, lon:lon3};
+    if(isFinite(lat3) && isFinite(lon3)) return fixSwapIfNeeded({lat:lat3, lon:lon3});
   }
 
   return {lat:NaN, lon:NaN};
 }
+
 function detectLatLonFromRowArray(arr){
   const lat = num(arr?.[17]);
   const lon = num(arr?.[18]);
-  if(isFinite(lat) && isFinite(lon) && Math.abs(lat)<=90 && Math.abs(lon)<=180) return {lat, lon};
+  if(isFinite(lat) && isFinite(lon) && Math.abs(lat)<=90 && Math.abs(lon)<=180){
+    return fixSwapIfNeeded({lat, lon});
+  }
   return {lat:NaN, lon:NaN};
-}
-function latLonValid(o){
-  return o && isFinite(o.lat) && isFinite(o.lon) && Math.abs(o.lat)<=90 && Math.abs(o.lon)<=180;
 }
 
 async function geocodeCached(q){
@@ -411,7 +427,6 @@ function makeDraggable(ctxEl){
     document.body.style.userSelect = "";
   }
 
-  // Maus
   bar.addEventListener("mousedown", (e)=>{
     if(e.target.closest && e.target.closest("#ctxClose")) return;
     e.preventDefault(); e.stopPropagation();
@@ -427,7 +442,6 @@ function makeDraggable(ctxEl){
     document.addEventListener("mouseup", mu);
   });
 
-  // Touch
   bar.addEventListener("touchstart", (e)=>{
     if(e.target.closest && e.target.closest("#ctxClose")) return;
     const t = e.touches?.[0];
@@ -478,7 +492,9 @@ function parseFirmenArray(table){
       const ps = num(r[sackIdx]);
       const land = landIdx>=0 ? str(r[landIdx]) : "";
 
-      const ll = detectLatLonFromRowArray(r); // ✅ R/S
+      let ll = detectLatLonFromRowArray(r);
+      // ✅ nur “gute” Europa-Koords übernehmen – sonst später geocoden
+      if(!latLonLooksEurope(ll)) ll = {lat:NaN, lon:NaN};
 
       return {
         firma: str(r[nameIdx]),
@@ -505,7 +521,9 @@ function parseKunden(rows, fields){
     landKey=(keys.find(k=>["land","country"].includes(lc(k)))||null);
 
   return rows.map(x=>{
-    const ll = detectLatLonFromRowObj(x, fields); // ✅ FIX
+    let ll = detectLatLonFromRowObj(x, fields);
+    if(!latLonLooksEurope(ll)) ll = {lat:NaN, lon:NaN};
+
     return ({
       name:str(x[nameKey]),
       ort:str(x[ortKey]),
@@ -571,7 +589,8 @@ function parseSaegerestholzFirmen(rows, fields){
     }
     const land = str(x[landKey]);
 
-    const ll = detectLatLonFromRowObj(x, fields); // ✅ FIX
+    let ll = detectLatLonFromRowObj(x, fields);
+    if(!latLonLooksEurope(ll)) ll = {lat:NaN, lon:NaN};
 
     return {
       firma: str(x[firmaKey]),
@@ -596,7 +615,10 @@ function parseSaegerestholzKunden(rows, fields){
 
   return rows.map(x=>{
     const land = str(x[landKey]);
-    const ll = detectLatLonFromRowObj(x, fields); // ✅ FIX
+
+    let ll = detectLatLonFromRowObj(x, fields);
+    if(!latLonLooksEurope(ll)) ll = {lat:NaN, lon:NaN};
+
     return {
       name: str(x[nameKey]),
       plz: str(x[plzKey]),
@@ -1012,7 +1034,8 @@ async function buildUnitOnce(unit){
   for(const w of st.werke){
     let c=null;
 
-    if(latLonValid(w)){
+    // ✅ Koords nur nehmen, wenn plausibel Europa (sonst geocode)
+    if(latLonLooksEurope({lat:w.lat, lon:w.lon})){
       c = { lat: w.lat, lon: w.lon, country_code: (w.country_code||""), country: w.land||"" };
     } else {
       if(unit==="saegerestholz"){
@@ -1046,7 +1069,7 @@ async function buildUnitOnce(unit){
   for(const k of st.kunden){
     let c=null;
 
-    if(latLonValid(k)){
+    if(latLonLooksEurope({lat:k.lat, lon:k.lon})){
       c = { lat: k.lat, lon: k.lon, country_code: (k.country_code||""), country: k.land||"" };
     } else {
       if(unit==="saegerestholz"){
